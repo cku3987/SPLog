@@ -247,10 +247,3 @@ Documentation direction:
 Release build output:
 
 - [SPLog.dll](C:/Users/user/source/repos/SPLog/SPLog/bin/Release/net8.0/SPLog.dll)
-
-## Likely next features if work continues
-
-- JSON log output
-- Caller location logging
-- Per-category minimum levels
-- Compression of old rolled logs
