@@ -1,0 +1,19 @@
+{
+  "Name": "Core",
+  "MinimumLevel": "Information",
+  "UseUtcTimestamp": false,
+  "IncludeThreadId": true,
+  "IncludeLoggerName": true,
+  "EnableConsole": true,
+  "EnableFile": true,
+  "FilePath": "logs",
+  "FileConflictMode": "Append",
+  "FileRollingMode": "Daily",
+  "MaxFileSizeBytes": 10485760,
+  "MaxRollingFiles": 14,
+  "QueueCapacity": 8192,
+  "BatchSize": 10,
+  "FlushIntervalMs": 100,
+  "FileBufferSize": 65536,
+  "BlockWhenQueueFull": true
+}

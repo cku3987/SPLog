@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SPLog User Guide</title>
+  <style>
+    body { font-family: "Segoe UI", sans-serif; margin: 36px; line-height: 1.6; color: #222; }
+    h1, h2 { margin-top: 28px; margin-bottom: 12px; }
+    code { font-family: Consolas, monospace; }
+    pre { background: #fafafa; border: 1px solid #d9d9d9; border-radius: 8px; padding: 16px; overflow: auto; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #d9d9d9; padding: 10px; text-align: left; vertical-align: top; font-size: 14px; }
+    th { background: #f3f3f3; }
+    .kw { color: #008000; } .str { color: #a31515; } .type { color: #0066cc; }
+  </style>
+</head>
+<body>
+  <h1>SPLog User Guide</h1>
+  <p>SPLog is a lightweight logging DLL for fast, isolated logging per application part.</p>
+
+  <h2>Recommended Pattern 1: Application-Lifetime Logger</h2>
+  <pre><code><span class="kw">public static class</span> AppLog
+{
+    <span class="kw">public static</span> SPLogger Core { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">null</span>!;
+
+    <span class="kw">public static</span> <span class="type">void</span> Initialize()
+    {
+        Core = SPLogFactory.Create(options =&gt;
+        {
+            options.Name = <span class="str">"Core"</span>;
+            options.EnableFile = <span class="kw">true</span>;
+            options.FilePath = <span class="str">"logs"</span>;
+        });
+    }
+
+    <span class="kw">public static</span> <span class="type">void</span> Shutdown()
+    {
+        Core.Dispose();
+    }
+}</code></pre>
+  <p>Use this when one logger should live for the whole application and be reused from many places.</p>
+
+  <h2>Recommended Pattern 2: Short-Lived Logger</h2>
+  <pre><code><span class="kw">using</span> <span class="kw">var</span> coreLog = SPLogFactory.Create(options =&gt;
+{
+    options.Name = <span class="str">"Core"</span>;
+    options.EnableConsole = <span class="kw">true</span>;
+    options.EnableFile = <span class="kw">true</span>;
+    options.FilePath = <span class="str">"logs"</span>;
+});</code></pre>
+  <p>Why <code>using var</code> is recommended:</p>
+  <ul>
+    <li><code>SPLogger</code> holds background resources.</li>
+    <li>You should call <code>Dispose()</code> when logging is finished.</li>
+    <li><code>using var</code> is the safest way because it disposes automatically at the end of the scope.</li>
+    <li>If you do not dispose the logger, some queued log entries may remain in memory and may not reach the file.</li>
+  </ul>
+  <p>When should you call <code>Dispose()</code>:</p>
+  <ul>
+    <li>Call it when that logger will no longer be used.</li>
+    <li>Usually this means right before program shutdown, when a work scope finishes, or when the owning object is being destroyed.</li>
+    <li>If one logger lives for the whole application, dispose it once at application shutdown.</li>
+    <li>If a logger is only used in a short scope, <code>using var</code> is the safest pattern.</li>
+  </ul>
+  <pre><code><span class="type">void</span> Run()
+{
+    <span class="kw">using</span> <span class="kw">var</span> logger = SPLogFactory.Create(options =&gt;
+    {
+        options.Name = <span class="str">"Core"</span>;
+        options.EnableFile = <span class="kw">true</span>;
+        options.FilePath = <span class="str">"logs"</span>;
+    });
+
+    logger.Information(<span class="str">$"start"</span>);
+    logger.Information(<span class="str">$"end"</span>);
+} <span class="str">// automatic Dispose here</span></code></pre>
+  <p>Do not call <code>Dispose()</code> in the middle if you still plan to use the logger afterward.</p>
+
+  <p>Recommended pattern with external config:</p>
+  <pre><code><span class="kw">using</span> <span class="kw">var</span> coreLog = SPLogFactory.CreateFromJsonFile(<span class="str">"config/splog.core.json"</span>);</code></pre>
+
+  <h2>Exception Logging</h2>
+  <pre><code><span class="kw">try</span>
+{
+    ProcessRequest();
+}
+<span class="kw">catch</span> (<span class="type">Exception</span> ex)
+{
+    coreLog.Error(ex, <span class="str">"request failed"</span>);
+}</code></pre>
+  <p>Why exception logging matters:</p>
+  <ul>
+    <li><code>logger.Error($"failed: {ex}")</code> and <code>logger.Error(ex, "failed")</code> are not the same thing.</li>
+    <li>If developers put exceptions into strings manually, the format becomes inconsistent.</li>
+    <li>The dedicated exception overload keeps the log format consistent across the project.</li>
+  </ul>
+  <p>What SPLog writes for exceptions:</p>
+  <ul>
+    <li>Your custom message</li>
+    <li>Exception type</li>
+    <li>Exception message</li>
+    <li>Stack trace</li>
+    <li>Inner exception chain</li>
+  </ul>
+  <p>Where exception logs are written:</p>
+  <ul>
+    <li>To the same console output, if console logging is enabled</li>
+    <li>To the same file output, if file logging is enabled</li>
+    <li>In short, exception logs use the same logger targets as normal logs</li>
+  </ul>
+
+  <h2>Logging String Examples</h2>
+  <p>Basic string:</p>
+  <pre><code>logger.Information(<span class="str">"application started"</span>);</code></pre>
+  <p>String variable:</p>
+  <pre><code><span class="kw">var</span> message = <span class="str">"network connected"</span>;
+logger.Information(message);</code></pre>
+  <p>Interpolated string:</p>
+  <pre><code><span class="kw">var</span> userId = 1201;
+logger.Information(<span class="str">$"user connected: {userId}"</span>);</code></pre>
+  <p>Multiple values:</p>
+  <pre><code><span class="kw">var</span> ip = <span class="str">"10.0.0.1"</span>;
+<span class="kw">var</span> port = 443;
+logger.Information(<span class="str">$"connected to {ip}:{port}"</span>);</code></pre>
+  <p>Warning and error text:</p>
+  <pre><code>logger.Warning(<span class="str">"response delay detected"</span>);
+logger.Error(<span class="str">"request failed"</span>);</code></pre>
+  <p>Exception logging:</p>
+  <pre><code><span class="kw">try</span>
+{
+    RunProcess();
+}
+<span class="kw">catch</span> (<span class="type">Exception</span> ex)
+{
+    logger.Error(ex, <span class="str">"process failed"</span>);
+}</code></pre>
+
+  <h2>External Config Save</h2>
+  <pre><code><span class="kw">var</span> options = <span class="kw">new</span> SPLogOptions
+{
+    Name = <span class="str">"Core"</span>,
+    EnableFile = <span class="kw">true</span>,
+    FilePath = <span class="str">"logs"</span>
+};
+
+SPLogConfiguration.SaveToJsonFile(options, <span class="str">"config/splog.core.json"</span>);</code></pre>
+  <p>If your goal is to update an existing options object in memory, use <code>Update</code> instead of <code>Save</code>:</p>
+  <pre><code>SPLogConfiguration.Update(options);
+SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.core.json"</span>);</code></pre>
+  <p>Important difference:</p>
+  <ul>
+    <li><code>SPLogFactory.Create(options =&gt; { ... })</code> uses a temporary options object inside that lambda.</li>
+    <li>You do not keep that object directly after logger creation unless you created a separate <code>SPLogOptions</code> variable yourself.</li>
+    <li><code>Update(...)</code> and <code>UpdateFromJsonFile(...)</code> are for cases where you already have your own <code>SPLogOptions</code> object in a variable.</li>
+  </ul>
+  <pre><code><span class="kw">var</span> options = <span class="kw">new</span> SPLogOptions();
+SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.core.json"</span>);
+
+<span class="kw">using</span> <span class="kw">var</span> logger = SPLogFactory.Create(options);</code></pre>
+  <p>When you save options to JSON, SPLog first normalizes and validates the values, then writes that normalized version to disk. The same normalized values are also copied back into the original <code>SPLogOptions</code> object in memory.</p>
+
+  <h2>SPLogOptions</h2>
+  <table>
+    <tr><th>Option</th><th>Default</th><th>Choices</th><th>Detailed description</th></tr>
+    <tr><td><code>Name</code></td><td><code>SPLog</code></td><td>Any non-empty text</td><td>This name is written into each log line. When <code>FilePath</code> is a folder, it is also used as the automatic file name.</td></tr>
+    <tr><td><code>MinimumLevel</code></td><td><code>Information</code></td><td><code>Trace</code>, <code>Debug</code>, <code>Information</code>, <code>Warning</code>, <code>Error</code>, <code>Critical</code>, <code>None</code></td><td><code>Trace</code> keeps everything. <code>Debug</code> is useful during development. <code>Information</code> is the normal default. <code>Warning</code> keeps suspicious events. <code>Error</code> keeps failures. <code>Critical</code> keeps only severe failures. <code>None</code> disables logging.</td></tr>
+    <tr><td><code>UseUtcTimestamp</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td><code>false</code> uses local machine time. <code>true</code> uses UTC, which is useful when multiple servers or regions write logs.</td></tr>
+    <tr><td><code>IncludeThreadId</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>Adds the managed thread ID. Keep it on when several tasks or threads run at the same time.</td></tr>
+    <tr><td><code>IncludeLoggerName</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>Adds the logger name to each line. Usually useful when more than one logger exists.</td></tr>
+    <tr><td><code>EnableConsole</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>Writes to the console window. Useful during development and testing.</td></tr>
+    <tr><td><code>EnableFile</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>Writes to files. Usually enabled in real applications.</td></tr>
+    <tr><td><code>FilePath</code></td><td><code>logs</code></td><td>Folder path or full file path</td><td>If you pass a folder like <code>logs</code>, SPLog creates <code>&lt;Name&gt;.log</code> automatically. Relative paths use the executable folder. Absolute paths are used as-is.</td></tr>
+    <tr><td><code>FileConflictMode</code></td><td><code>Append</code></td><td><code>Append</code>, <code>CreateNew</code></td><td>Controls what happens when the current target file already exists. <code>Append</code> keeps writing to the existing file. <code>CreateNew</code> starts a new distinguishable file by adding a numbered suffix such as <code>_001</code>, <code>_002</code>. The first file still uses the normal base name, and the numbered suffix starts only when another file for the same period already exists.</td></tr>
+    <tr><td><code>FileRollingMode</code></td><td><code>Daily</code></td><td><code>None</code>, <code>Daily</code>, <code>Hourly</code></td><td><code>None</code> means no time suffix. <code>Daily</code> splits files by day using <code>yyyyMMdd</code>. <code>Hourly</code> splits by hour using <code>yyyyMMdd_HH</code>. High-volume applications often benefit from <code>Hourly</code>.</td></tr>
+    <tr><td><code>MaxFileSizeBytes</code></td><td><code>10485760</code> (10 MB)</td><td>Any positive integer</td><td>Maximum size before SPLog rolls to the next numbered file. Bigger values create fewer files. Smaller values are easier to inspect and move.</td></tr>
+    <tr><td><code>MaxRollingFiles</code></td><td><code>14</code></td><td>Any positive integer</td><td>How many recent rolled files are kept. Older files are deleted automatically.</td></tr>
+    <tr><td><code>QueueCapacity</code></td><td><code>8192</code></td><td>Any positive integer</td><td>How many log entries may wait in memory before background writing catches up. Too small can drop logs during bursts. Too large uses more memory.</td></tr>
+    <tr><td><code>BatchSize</code></td><td><code>10</code></td><td>Any positive integer</td><td>Maximum number of log entries written together in one background batch. The default <code>10</code> is a practical balance for normal use. SPLog does not wait until all 10 entries exist; if fewer entries are available, it writes the smaller batch. Larger values often improve performance.</td></tr>
+    <tr><td><code>FlushIntervalMs</code></td><td><code>100</code></td><td>Any positive integer</td><td>Background flush interval in milliseconds. Smaller values flush sooner but increase I/O frequency. Larger values reduce I/O but delay file output slightly.</td></tr>
+    <tr><td><code>FileBufferSize</code></td><td><code>65536</code></td><td><code>1024</code> or larger</td><td>Buffer size used by file writing. The default is already suitable for most cases.</td></tr>
+    <tr><td><code>BlockWhenQueueFull</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>The default <code>true</code> waits for queue space so logs are less likely to be lost. If you change it to <code>false</code>, the app keeps moving without waiting, but some new logs may be dropped during heavy bursts.</td></tr>
+  </table>
+
+  <h2>Rolling Behavior</h2>
+  <ul>
+    <li><code>Daily</code>: <code>Core_20260313.log</code></li>
+    <li><code>Hourly</code>: <code>Core_20260313_14.log</code></li>
+    <li>Size rolling on top of time rolling: <code>Core_20260313_14_001.log</code></li>
+    <li><code>FileConflictMode = Append</code>: if the current target file already exists, SPLog continues writing into that file.</li>
+    <li><code>FileConflictMode = CreateNew</code>: if the current target file already exists, SPLog creates a new distinct file when the logger starts.</li>
+  </ul>
+  <p>Examples with <code>Name = "Core"</code> and <code>FilePath = "logs"</code>:</p>
+  <ul>
+    <li><code>Daily + Append</code> - first start: <code>Core_20260313.log</code>, next start on the same day: still <code>Core_20260313.log</code></li>
+    <li><code>Daily + CreateNew</code> - first start: <code>Core_20260313.log</code>, next start on the same day: <code>Core_20260313_001.log</code>, then <code>Core_20260313_002.log</code></li>
+    <li><code>Hourly + CreateNew</code> - first start in that hour: <code>Core_20260313_14.log</code>, next start in the same hour: <code>Core_20260313_14_001.log</code></li>
+    <li>If size rolling overlaps with <code>CreateNew</code>, the numbering continues. Example: start with <code>Core_20260313_001.log</code>, then if that file exceeds <code>MaxFileSizeBytes</code>, SPLog rolls to <code>Core_20260313_002.log</code>, then <code>Core_20260313_003.log</code>.</li>
+    <li>If size rolling overlaps with <code>Append</code>, SPLog appends to the current file first and then rolls to the next numbered file when the size limit is reached.</li>
+  </ul>
+</body>
+</html>

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>SPLog 사용 가이드</title>
+  <style>
+    body { font-family: "Malgun Gothic", "Segoe UI", sans-serif; margin: 36px; line-height: 1.7; color: #222; }
+    h1, h2 { margin-top: 28px; margin-bottom: 12px; }
+    code { font-family: Consolas, monospace; }
+    pre { background: #fafafa; border: 1px solid #d9d9d9; border-radius: 8px; padding: 16px; overflow: auto; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #d9d9d9; padding: 10px; text-align: left; vertical-align: top; font-size: 14px; }
+    th { background: #f3f3f3; }
+    .kw { color: #008000; } .str { color: #a31515; } .type { color: #0066cc; }
+  </style>
+</head>
+<body>
+  <h1>SPLog 사용 가이드</h1>
+  <p>SPLog는 빠르고 가볍게, 그리고 파트별로 분리해서 사용할 수 있도록 만든 로깅 DLL입니다.</p>
+
+  <h2>권장 사용 방식 1: 앱 수명 전체에서 쓰는 전역 로거</h2>
+  <pre><code><span class="kw">public static class</span> AppLog
+{
+    <span class="kw">public static</span> SPLogger Core { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">null</span>!;
+
+    <span class="kw">public static</span> <span class="type">void</span> Initialize()
+    {
+        Core = SPLogFactory.Create(options =&gt;
+        {
+            options.Name = <span class="str">"Core"</span>;
+            options.EnableFile = <span class="kw">true</span>;
+            options.FilePath = <span class="str">"logs"</span>;
+        });
+    }
+
+    <span class="kw">public static</span> <span class="type">void</span> Shutdown()
+    {
+        Core.Dispose();
+    }
+}</code></pre>
+  <p>이 방식은 애플리케이션 전체에서 하나의 로거를 오래 들고 쓰고 싶을 때 맞습니다.</p>
+
+  <h2>권장 사용 방식 2: 짧은 범위에서만 쓰는 로거</h2>
+  <pre><code><span class="kw">using</span> <span class="kw">var</span> coreLog = SPLogFactory.Create(options =&gt;
+{
+    options.Name = <span class="str">"Core"</span>;
+    options.EnableConsole = <span class="kw">true</span>;
+    options.EnableFile = <span class="kw">true</span>;
+    options.FilePath = <span class="str">"logs"</span>;
+});</code></pre>
+  <p>왜 <code>using var</code>를 권장하냐면:</p>
+  <ul>
+    <li><code>SPLogger</code>는 백그라운드 리소스를 잡고 있습니다.</li>
+    <li>로깅이 끝나면 반드시 <code>Dispose()</code>를 호출해야 합니다.</li>
+    <li><code>using var</code>를 쓰면 스코프가 끝날 때 자동으로 정리됩니다.</li>
+    <li><code>Dispose()</code>를 하지 않으면 큐에 남은 로그가 파일로 끝까지 flush되지 못할 수 있습니다.</li>
+  </ul>
+  <p>언제 <code>Dispose()</code> 해야 하냐면:</p>
+  <ul>
+    <li>그 로거를 더 이상 쓰지 않을 때 바로 해야 합니다.</li>
+    <li>보통 프로그램 종료 직전, 작업 단위가 끝나는 시점, 또는 객체 수명이 끝나는 시점에 합니다.</li>
+    <li>애플리케이션 전체에서 오래 쓰는 로거라면 종료 시점에 한 번 정리하면 됩니다.</li>
+    <li>잠깐만 쓰는 로거라면 <code>using var</code>가 가장 안전합니다.</li>
+  </ul>
+  <pre><code><span class="type">void</span> Run()
+{
+    <span class="kw">using</span> <span class="kw">var</span> logger = SPLogFactory.Create(options =&gt;
+    {
+        options.Name = <span class="str">"Core"</span>;
+        options.EnableFile = <span class="kw">true</span>;
+        options.FilePath = <span class="str">"logs"</span>;
+    });
+
+    logger.Information(<span class="str">$"start"</span>);
+    logger.Information(<span class="str">$"end"</span>);
+} <span class="str">// 여기서 자동 Dispose</span></code></pre>
+  <p>아직 계속 쓸 로거라면 중간에 <code>Dispose()</code> 하면 안 됩니다.</p>
+
+  <p>외부 설정 파일을 쓰는 권장 방식:</p>
+  <pre><code><span class="kw">using</span> <span class="kw">var</span> coreLog = SPLogFactory.CreateFromJsonFile(<span class="str">"config/splog.core.json"</span>);</code></pre>
+
+  <h2>Exception 전용 로깅</h2>
+  <pre><code><span class="kw">try</span>
+{
+    ProcessRequest();
+}
+<span class="kw">catch</span> (<span class="type">Exception</span> ex)
+{
+    coreLog.Error(ex, <span class="str">"request failed"</span>);
+}</code></pre>
+  <p>왜 예외 전용 로깅이 필요하냐면:</p>
+  <ul>
+    <li><code>logger.Error($"failed: {ex}")</code>와 <code>logger.Error(ex, "failed")</code>는 같은 게 아닙니다.</li>
+    <li>개발자마다 예외를 문자열에 직접 넣기 시작하면 로그 형식이 제각각이 됩니다.</li>
+    <li>예외 전용 오버로드를 쓰면 프로젝트 전체에서 일정한 형식으로 예외 로그를 남길 수 있습니다.</li>
+  </ul>
+  <p>예외 로그에 남는 정보:</p>
+  <ul>
+    <li>사용자 메시지</li>
+    <li>예외 타입</li>
+    <li>예외 메시지</li>
+    <li>스택 트레이스</li>
+    <li>InnerException 체인</li>
+  </ul>
+  <p>예외 로그가 기록되는 위치:</p>
+  <ul>
+    <li>콘솔 로깅이 켜져 있으면 같은 콘솔 출력으로 기록됩니다.</li>
+    <li>파일 로깅이 켜져 있으면 같은 로그 파일로 기록됩니다.</li>
+    <li>즉, 예외 로그는 일반 로그와 같은 출력 대상으로 나갑니다.</li>
+  </ul>
+
+  <h2>로깅 문자열 사용 예시</h2>
+  <p>기본 문자열:</p>
+  <pre><code>logger.Information(<span class="str">"application started"</span>);</code></pre>
+  <p>문자열 변수:</p>
+  <pre><code><span class="kw">var</span> message = <span class="str">"network connected"</span>;
+logger.Information(message);</code></pre>
+  <p>보간 문자열:</p>
+  <pre><code><span class="kw">var</span> userId = 1201;
+logger.Information(<span class="str">$"user connected: {userId}"</span>);</code></pre>
+  <p>값 여러 개 넣기:</p>
+  <pre><code><span class="kw">var</span> ip = <span class="str">"10.0.0.1"</span>;
+<span class="kw">var</span> port = 443;
+logger.Information(<span class="str">$"connected to {ip}:{port}"</span>);</code></pre>
+  <p>경고와 오류 문자열:</p>
+  <pre><code>logger.Warning(<span class="str">"response delay detected"</span>);
+logger.Error(<span class="str">"request failed"</span>);</code></pre>
+  <p>예외 로깅:</p>
+  <pre><code><span class="kw">try</span>
+{
+    RunProcess();
+}
+<span class="kw">catch</span> (<span class="type">Exception</span> ex)
+{
+    logger.Error(ex, <span class="str">"process failed"</span>);
+}</code></pre>
+
+  <h2>외부 설정 저장</h2>
+  <pre><code><span class="kw">var</span> options = <span class="kw">new</span> SPLogOptions
+{
+    Name = <span class="str">"Core"</span>,
+    EnableFile = <span class="kw">true</span>,
+    FilePath = <span class="str">"logs"</span>
+};
+
+SPLogConfiguration.SaveToJsonFile(options, <span class="str">"config/splog.core.json"</span>);</code></pre>
+  <p>메모리 안의 기존 옵션 객체를 갱신하는 목적이라면 <code>Save</code>보다 <code>Update</code>가 맞습니다.</p>
+  <pre><code>SPLogConfiguration.Update(options);
+SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.core.json"</span>);</code></pre>
+  <p>중요한 차이:</p>
+  <ul>
+    <li><code>SPLogFactory.Create(options =&gt; { ... })</code> 안의 <code>options</code>는 람다 안에서만 쓰는 임시 객체입니다.</li>
+    <li>로거를 만든 뒤에는 그 객체를 직접 들고 있지 않습니다. 직접 <code>SPLogOptions</code> 변수를 만들어 둔 경우만 예외입니다.</li>
+    <li><code>Update(...)</code>, <code>UpdateFromJsonFile(...)</code>는 이미 내가 변수로 들고 있는 <code>SPLogOptions</code> 객체가 있을 때 쓰는 API입니다.</li>
+  </ul>
+  <pre><code><span class="kw">var</span> options = <span class="kw">new</span> SPLogOptions();
+SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.core.json"</span>);
+
+<span class="kw">using</span> <span class="kw">var</span> logger = SPLogFactory.Create(options);</code></pre>
+  <p>옵션을 JSON으로 저장할 때는 SPLog가 먼저 값을 정리하고 검증한 뒤 저장합니다. 그리고 그 정리된 값이 메모리 안의 원래 <code>SPLogOptions</code> 객체에도 다시 반영됩니다.</p>
+
+  <h2>SPLogOptions</h2>
+  <table>
+    <tr><th>옵션</th><th>기본값</th><th>선택지</th><th>자세한 설명</th></tr>
+    <tr><td><code>Name</code></td><td><code>SPLog</code></td><td>비어 있지 않은 문자열</td><td>로그 한 줄에 기록될 이름입니다. <code>FilePath</code>가 폴더일 때는 자동 파일명에도 사용됩니다.</td></tr>
+    <tr><td><code>MinimumLevel</code></td><td><code>Information</code></td><td><code>Trace</code>, <code>Debug</code>, <code>Information</code>, <code>Warning</code>, <code>Error</code>, <code>Critical</code>, <code>None</code></td><td><code>Trace</code>는 거의 모든 로그를 남기고, <code>Debug</code>는 개발용, <code>Information</code>은 일반 운영 기본값, <code>Warning</code>은 이상 징후 위주, <code>Error</code>는 실패 위주, <code>Critical</code>은 치명적 오류만 남깁니다. <code>None</code>은 로그를 모두 끕니다.</td></tr>
+    <tr><td><code>UseUtcTimestamp</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td><code>false</code>면 로컬 시간, <code>true</code>면 UTC로 기록합니다. 여러 서버를 함께 운영하면 UTC가 편합니다.</td></tr>
+    <tr><td><code>IncludeThreadId</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>로그를 남긴 스레드 번호를 기록합니다. 동시에 여러 작업이 도는 프로그램이면 켜 두는 편이 좋습니다.</td></tr>
+    <tr><td><code>IncludeLoggerName</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>로그 한 줄에 로거 이름을 같이 찍습니다. 여러 로거를 나눠 쓰면 보통 켜 두는 편이 좋습니다.</td></tr>
+    <tr><td><code>EnableConsole</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>콘솔 창에도 로그를 출력합니다. 개발 중이나 테스트 중에 유용합니다.</td></tr>
+    <tr><td><code>EnableFile</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>파일로 로그를 남깁니다. 실제 프로그램에서는 대부분 켭니다.</td></tr>
+    <tr><td><code>FilePath</code></td><td><code>logs</code></td><td>폴더 경로 또는 전체 파일 경로</td><td><code>logs</code>처럼 폴더만 주면 SPLog가 <code>&lt;Name&gt;.log</code>를 자동 생성합니다. 상대 경로는 exe 폴더 기준이고, 절대 경로는 그대로 사용합니다.</td></tr>
+    <tr><td><code>FileRollingMode</code></td><td><code>Daily</code></td><td><code>None</code>, <code>Daily</code>, <code>Hourly</code></td><td><code>None</code>은 날짜나 시간 suffix 없이 사용합니다. <code>Daily</code>는 하루마다, <code>Hourly</code>는 한 시간마다 파일을 나눕니다. 로그 양이 많으면 <code>Hourly</code>가 관리하기 쉽습니다.</td></tr>
+    <tr><td><code>MaxFileSizeBytes</code></td><td><code>10485760</code> (10 MB)</td><td>0보다 큰 정수</td><td>이 크기에 도달하면 다음 번호 파일로 넘어갑니다. 크게 하면 파일 수는 줄고, 작게 하면 파일 관리가 쉬워집니다.</td></tr>
+    <tr><td><code>MaxRollingFiles</code></td><td><code>14</code></td><td>0보다 큰 정수</td><td>최신 rolling 파일을 몇 개까지 남길지 정합니다. 오래된 파일은 자동 삭제됩니다.</td></tr>
+    <tr><td><code>QueueCapacity</code></td><td><code>8192</code></td><td>0보다 큰 정수</td><td>메모리에 잠깐 쌓아둘 수 있는 로그 개수입니다. 너무 작으면 폭주 시 일부 로그가 버려질 수 있고, 너무 크면 메모리를 더 사용합니다.</td></tr>
+    <tr><td><code>BatchSize</code></td><td><code>10</code></td><td>0보다 큰 정수</td><td>한 번에 묶어서 처리할 최대 로그 개수입니다. 기본값 <code>10</code>은 일반적인 사용에서 속도와 단순함의 균형이 괜찮은 값입니다. SPLog는 10개가 다 찰 때까지 무조건 기다리지 않고, 지금 들어와 있는 개수만큼 먼저 기록할 수 있습니다. 값을 키우면 보통 파일 쓰기 성능이 좋아집니다.</td></tr>
+    <tr><td><code>FlushIntervalMs</code></td><td><code>100</code></td><td>0보다 큰 정수</td><td>백그라운드 flush 주기입니다. 작게 하면 더 빨리 파일에 보이지만 I/O가 늘고, 크게 하면 성능은 좋아질 수 있지만 파일 반영은 조금 늦어집니다.</td></tr>
+    <tr><td><code>FileBufferSize</code></td><td><code>65536</code></td><td><code>1024</code> 이상 정수</td><td>파일 쓰기 버퍼 크기입니다. 기본값이면 대부분 충분합니다.</td></tr>
+    <tr><td><code>BlockWhenQueueFull</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>기본값 <code>true</code>는 자리가 날 때까지 기다려서 로그 유실을 줄이는 쪽입니다. <code>false</code>로 바꾸면 프로그램은 더 빨리 진행되지만, 로그 폭주 시 새 로그 일부를 버릴 수 있습니다.</td></tr>
+  </table>
+  <h2>FileConflictMode</h2>
+  <ul>
+    <li><code>FileConflictMode</code> 옵션은 같은 이름의 현재 대상 로그 파일이 이미 있을 때 어떻게 처리할지 정합니다.</li>
+    <li><code>Append</code>: 기존 파일에 그대로 이어서 기록합니다.</li>
+    <li><code>CreateNew</code>: 새 파일을 구분되게 만듭니다.</li>
+  </ul>
+  <p>예시:</p>
+  <ul>
+    <li><code>Name = "Core"</code>, <code>FilePath = "logs"</code>, <code>FileRollingMode = Daily</code>, <code>FileConflictMode = Append</code><br>첫 실행: <code>Core_20260313.log</code><br>같은 날 다시 실행: 계속 <code>Core_20260313.log</code></li>
+    <li><code>Name = "Core"</code>, <code>FilePath = "logs"</code>, <code>FileRollingMode = Daily</code>, <code>FileConflictMode = CreateNew</code><br>첫 실행: <code>Core_20260313.log</code><br>같은 날 다시 실행: <code>Core_20260313_001.log</code><br>그 다음 실행: <code>Core_20260313_002.log</code></li>
+    <li><code>Name = "Core"</code>, <code>FilePath = "logs"</code>, <code>FileRollingMode = Hourly</code>, <code>FileConflictMode = CreateNew</code><br>해당 시간 첫 실행: <code>Core_20260313_14.log</code><br>같은 시간 다시 실행: <code>Core_20260313_14_001.log</code></li>
+    <li>용량 롤링이 <code>CreateNew</code>와 겹치면 번호를 계속 이어서 씁니다.<br>예: 시작 파일이 <code>Core_20260313_001.log</code>이고 이 파일이 <code>MaxFileSizeBytes</code>를 넘기면 다음 파일은 <code>Core_20260313_002.log</code>, 그 다음은 <code>Core_20260313_003.log</code>입니다.</li>
+    <li>용량 롤링이 <code>Append</code>와 겹치면 먼저 현재 파일에 이어서 쓰다가, 용량 제한을 넘는 시점에 다음 번호 파일로 넘어갑니다.</li>
+  </ul>
+  <p>정리하면 첫 파일은 항상 기본 이름으로 시작하고, <code>CreateNew</code>는 같은 기간에 같은 이름 파일이 이미 있을 때만 <code>_001</code>, <code>_002</code> 같은 번호를 붙입니다.</p>
+</body>
+</html>
