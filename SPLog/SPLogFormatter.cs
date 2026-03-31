@@ -9,7 +9,7 @@ internal static class SPLogFormatter
         var builder = new StringBuilder(128 + entry.Message.Length);
         var timestamp = options.UseUtcTimestamp ? entry.Timestamp.ToUniversalTime() : entry.Timestamp;
         builder.Append('[');
-        builder.Append(timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff"));
+        builder.Append(timestamp.ToString(options.TimestampFormat));
         builder.Append("] [");
         builder.Append(entry.Level switch
         {
@@ -34,6 +34,13 @@ internal static class SPLogFormatter
         {
             builder.Append(" [T:");
             builder.Append(entry.ThreadId);
+            builder.Append(']');
+        }
+
+        if (options.IncludeSequenceNumber && entry.SequenceNumber > 0)
+        {
+            builder.Append(" [Q:");
+            builder.Append(entry.SequenceNumber);
             builder.Append(']');
         }
 

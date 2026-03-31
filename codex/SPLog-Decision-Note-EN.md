@@ -45,12 +45,29 @@ using var logger = SPLogFactory.Create(options =>
 });
 ```
 
+### Global logger with categories
+
+```csharp
+using var appLog = SPLogFactory.Create(options =>
+{
+    options.Name = "App";
+    options.EnableFile = true;
+    options.FilePath = "logs";
+});
+
+var coreLog = appLog.CreateCategory("Core");
+var networkLog = appLog.CreateCategory("Network");
+var socketLog = networkLog.CreateCategory("Socket");
+```
+
 ## Lifecycle rules
 
 - `Create()` starts logging immediately.
 - Always dispose a logger when it will no longer be used.
 - Global loggers should be disposed at app shutdown.
 - Scoped loggers should usually use `using var`.
+- Category loggers are lightweight handles that share the root logger's queue and writer.
+- In a category setup, the root logger is the one that should normally be disposed at shutdown.
 
 ## Configuration rules
 
@@ -88,7 +105,6 @@ using var logger = SPLogFactory.Create(options =>
 - `BatchSize = 10`
 - `FlushIntervalMs = 100`
 - `FileBufferSize = 65536`
-- `BlockWhenQueueFull = true`
 
 ## Removed or skipped options
 
@@ -106,4 +122,4 @@ using var logger = SPLogFactory.Create(options =>
 
 - `SPLog.Tests` for deterministic checks
 - `SPLog.StressRunner` for smoke, stress, and long-run validation
-- `codex/SPLog-StressRunner.sample.json` for a 3-day-style stress run template
+- `codex/SPLog-StressRunner.sample.json` for the default 3-day-style stress run template with one shared root logger (`App`) used directly, three categories under it, plus two additional independent loggers

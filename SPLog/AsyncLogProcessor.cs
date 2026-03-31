@@ -9,8 +9,9 @@ internal sealed class AsyncLogProcessor : IDisposable
     private readonly Channel<LogEntry> _channel;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _worker;
-    private int _droppedMessages;
     private int _disposed;
+    private long _lastWrittenTimestampTicks;
+    private long _nextSequenceNumber;
 
     public AsyncLogProcessor(SPLogOptions options, ILogSink sink)
     {
@@ -21,7 +22,7 @@ internal sealed class AsyncLogProcessor : IDisposable
         {
             SingleReader = true,
             SingleWriter = false,
-            FullMode = options.BlockWhenQueueFull ? BoundedChannelFullMode.Wait : BoundedChannelFullMode.DropWrite
+            FullMode = BoundedChannelFullMode.Wait
         };
 
         _channel = Channel.CreateBounded<LogEntry>(channelOptions);
@@ -35,18 +36,12 @@ internal sealed class AsyncLogProcessor : IDisposable
             return;
         }
 
-        if (_options.BlockWhenQueueFull)
-        {
-            _channel.Writer.WriteAsync(entry).AsTask().GetAwaiter().GetResult();
-            return;
-        }
-
-        Interlocked.Increment(ref _droppedMessages);
+        _channel.Writer.WriteAsync(entry).AsTask().GetAwaiter().GetResult();
     }
 
     public int DrainDroppedCount()
     {
-        return Interlocked.Exchange(ref _droppedMessages, 0);
+        return 0;
     }
 
     private async Task ProcessAsync()
@@ -70,6 +65,8 @@ internal sealed class AsyncLogProcessor : IDisposable
                     continue;
                 }
 
+                AssignSequenceNumbersInPlace(buffer.AsSpan(0, count));
+                MonotonicTimestampNormalizer.NormalizeInPlace(buffer.AsSpan(0, count), ref _lastWrittenTimestampTicks);
                 await _sink.WriteBatchAsync(buffer.AsMemory(0, count), CancellationToken.None).ConfigureAwait(false);
 
                 try
@@ -100,14 +97,31 @@ internal sealed class AsyncLogProcessor : IDisposable
             entries.Add(entry);
             if (entries.Count >= _options.BatchSize)
             {
-                await _sink.WriteBatchAsync(entries.ToArray(), CancellationToken.None).ConfigureAwait(false);
+                var batch = entries.ToArray();
+                AssignSequenceNumbersInPlace(batch);
+                MonotonicTimestampNormalizer.NormalizeInPlace(batch, ref _lastWrittenTimestampTicks);
+                await _sink.WriteBatchAsync(batch, CancellationToken.None).ConfigureAwait(false);
                 entries.Clear();
             }
         }
 
         if (entries.Count > 0)
         {
-            await _sink.WriteBatchAsync(entries.ToArray(), CancellationToken.None).ConfigureAwait(false);
+            var batch = entries.ToArray();
+            AssignSequenceNumbersInPlace(batch);
+            MonotonicTimestampNormalizer.NormalizeInPlace(batch, ref _lastWrittenTimestampTicks);
+            await _sink.WriteBatchAsync(batch, CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    private void AssignSequenceNumbersInPlace(Span<LogEntry> entries)
+    {
+        for (var i = 0; i < entries.Length; i++)
+        {
+            entries[i] = entries[i] with
+            {
+                SequenceNumber = Interlocked.Increment(ref _nextSequenceNumber)
+            };
         }
     }
 

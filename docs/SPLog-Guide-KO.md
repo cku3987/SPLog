@@ -30,6 +30,45 @@ public static class AppLog
 
 이 방식은 애플리케이션 전체에서 하나의 로거를 오래 들고 쓰고 싶을 때 맞습니다.
 
+권장 사용 방식 1A: 전역 로거 하나에 카테고리 나누기
+
+```csharp
+public static class AppLog
+{
+    public static SPLogger Root { get; private set; } = null!;
+    public static SPLogger Core { get; private set; } = null!;
+    public static SPLogger Network { get; private set; } = null!;
+
+    public static void Initialize()
+    {
+        Root = SPLogFactory.Create(options =>
+        {
+            options.Name = "App";
+            options.EnableFile = true;
+            options.FilePath = "logs";
+        });
+
+        Core = Root.CreateCategory("Core");
+        Network = Root.CreateCategory("Network");
+    }
+
+    public static void Shutdown()
+    {
+        Root.Dispose();
+    }
+}
+```
+
+이 방식은 전역 로거는 하나로 유지하면서도, 로그 안에서는 파트별 이름을 구분해서 보고 싶을 때 좋습니다.
+
+카테고리 로거에서 알아둘 점:
+
+- 루트 로거 이름이 `App`일 때 `CreateCategory("Network")`를 만들면 로그 이름은 `App.Network`가 됩니다.
+- 한 단계 더 내려가서 `App.Network.Socket`처럼 중첩 카테고리도 만들 수 있습니다.
+- 카테고리 로거는 루트 로거와 같은 큐, 같은 백그라운드 worker, 같은 파일 출력을 공유합니다.
+- 실제 리소스를 소유하는 것은 루트 로거입니다. 보통 종료 시점에는 루트 로거만 `Dispose()` 하면 됩니다.
+- 카테고리 로거에 `Dispose()`를 호출해도 안전하지만, 공유 writer를 닫지는 않습니다.
+
 권장 사용 방식 2: 짧은 범위에서만 쓰는 로거
 
 ```csharp
@@ -247,19 +286,20 @@ using var logger = SPLogFactory.Create(options);
 | `Name` | `SPLog` | 비어 있지 않은 문자열 | 로그 한 줄에 기록될 로거 이름입니다. `FilePath`가 폴더일 때는 이 값이 자동 파일명에도 사용됩니다. 예를 들어 `Name = "Core"`이고 `FilePath = "logs"`이면 기본 파일은 `logs/Core.log`로 시작합니다. |
 | `MinimumLevel` | `Information` | `Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical`, `None` | 어떤 레벨부터 로그를 남길지 정합니다. `Trace`는 거의 모든 로그를 남기고, `Debug`는 개발용, `Information`은 일반적인 운영 기본값, `Warning`은 이상 징후 위주, `Error`는 실패 위주, `Critical`은 치명적 오류만 남깁니다. `None`은 로그를 모두 끕니다. |
 | `UseUtcTimestamp` | `false` | `true`, `false` | `false`면 로컬 시간으로 기록해서 한 대의 PC에서 보기 쉽고, `true`면 UTC로 기록해서 여러 서버나 여러 지역 시스템을 함께 볼 때 시간 비교가 편합니다. |
+| `TimestampFormat` | `yyyy-MM-dd HH:mm:ss.fff` | 유효한 .NET `DateTime` 포맷 문자열 | 타임스탬프 전체 모양을 정합니다. 기본값은 `2026-03-31 15:49:00.912`처럼 읽기 쉬운 형식입니다. 더 세밀한 시간 표시가 필요하면 `yyyy-MM-dd HH:mm:ss.fffff`처럼 바꿀 수 있고, 시간대 표기가 필요하면 `K`나 `zzz` 같은 토큰도 넣을 수 있습니다. 자릿수만 따로 정하는 방식보다 정밀도와 모양을 한 번에 제어할 수 있어서 더 유연합니다. |
 | `IncludeThreadId` | `true` | `true`, `false` | 로그를 남긴 스레드 번호를 같이 기록합니다. 동시에 여러 작업이 도는 프로그램이면 `true`가 유용하고, 아주 단순한 프로그램이면 `false`로 줄여도 됩니다. |
-| `IncludeLoggerName` | `true` | `true`, `false` | 로그 한 줄에 로거 이름을 같이 찍습니다. 여러 로거를 나눠 쓰면 보통 `true`가 좋습니다. 이미 파일이 완전히 분리되어 있고 로그 줄을 더 짧게 보고 싶을 때만 `false`를 고려할 수 있습니다. |
+| `IncludeLoggerName` | `true` | `true`, `false` | 로그 한 줄에 로거 이름을 같이 찍습니다. 여러 로거를 나눠 쓰거나, `App.Network` 같은 카테고리 로거를 쓰거나, 어느 파트에서 나온 로그인지 보고 싶다면 보통 `true`가 좋습니다. 이미 파일이 완전히 분리되어 있고 로그 줄을 더 짧게 보고 싶을 때만 `false`를 고려할 수 있습니다. |
+| `IncludeSequenceNumber` | `false` | `true`, `false` | 로그 한 줄에 `[Q:123]` 같은 큐 순서 번호를 같이 찍습니다. 이 값은 롱런 테스트, 동시성 분석, 로그 순서 디버깅에 특히 유용합니다. 일반적인 애플리케이션 로그에서는 줄이 길어질 수 있으므로 기본값은 `false`입니다. |
 | `EnableConsole` | `true` | `true`, `false` | 콘솔 창에도 로그를 출력할지 정합니다. 개발 중, 테스트 중, 콘솔 앱에서는 유용합니다. 서비스나 백그라운드 앱에서는 파일만 쓰는 경우가 많습니다. |
 | `EnableFile` | `false` | `true`, `false` | 파일로 로그를 남길지 정합니다. 실제 프로그램에서는 대부분 `true`로 사용합니다. `EnableConsole`과 `EnableFile`이 둘 다 `false`면 기록할 곳이 없으므로 로거 생성이 실패합니다. |
 | `FilePath` | `logs` | 폴더 경로 또는 전체 파일 경로 | 기본 로그 위치입니다. `logs`처럼 폴더 경로만 주면 SPLog가 `<Name>.log`를 자동 생성합니다. `D:\Logs\custom.log`처럼 파일명까지 주면 그 이름을 그대로 사용합니다. 상대 경로는 exe 폴더 기준입니다. |
 | `FileRollingMode` | `Daily` | `None`, `Daily`, `Hourly` | 시간 기준 파일 분리 방식입니다. `None`은 날짜나 시간 suffix 없이 한 이름으로만 갑니다. `Daily`는 `yyyyMMdd` 기준으로 하루마다 나눕니다. `Hourly`는 `yyyyMMdd_HH` 기준으로 한 시간마다 나눕니다. 로그 양이 많으면 `Hourly`가 관리하기 쉽습니다. |
 | `MaxFileSizeBytes` | `10485760` | 0보다 큰 정수 | 파일 하나가 이 크기에 도달하면 다음 번호 파일로 넘어갑니다. 기본값은 10MB입니다. 값을 크게 하면 파일 수는 줄지만 파일 하나가 무거워지고, 작게 하면 파일 수는 늘지만 업로드나 확인은 쉬워집니다. |
 | `MaxRollingFiles` | `14` | 0보다 큰 정수 | 최신 rolling 파일을 몇 개까지 보관할지 정합니다. 오래된 파일은 자동 삭제됩니다. 디스크 공간이 넉넉하면 늘리고, 디스크를 아껴야 하면 줄이면 됩니다. |
-| `QueueCapacity` | `8192` | 0보다 큰 정수 | 메모리에 잠깐 쌓아둘 수 있는 로그 개수입니다. 값이 너무 작으면 로그 폭주 때 일부 로그가 버려질 수 있고, 너무 크면 메모리를 더 사용합니다. |
+| `QueueCapacity` | `8192` | 0보다 큰 정수 | 메모리에 잠깐 쌓아둘 수 있는 로그 개수입니다. 값이 너무 작으면 로그 폭주 때 더 빨리 대기가 걸릴 수 있고, 너무 크면 메모리를 더 사용합니다. SPLog는 큐가 가득 차면 버리기보다 기다리는 쪽을 선택합니다. |
 | `BatchSize` | `10` | 0보다 큰 정수 | 한 번에 묶어서 처리할 최대 로그 개수입니다. 기본값 `10`은 일반적인 사용에서 속도와 단순함의 균형이 괜찮은 값입니다. SPLog는 10개가 다 찰 때까지 무조건 기다리지 않고, 지금 들어와 있는 개수만큼 먼저 기록할 수 있습니다. 값을 키우면 보통 파일 쓰기 성능이 좋아집니다. |
 | `FlushIntervalMs` | `100` | 0보다 큰 정수 | 백그라운드 쓰기 주기입니다. `100`이면 대략 0.1초마다 파일로 밀어냅니다. 값을 작게 하면 더 빨리 디스크에 반영되지만 I/O가 늘고, 크게 하면 성능은 좋아질 수 있지만 파일 반영은 조금 늦어집니다. |
 | `FileBufferSize` | `65536` | `1024` 이상 정수 | 파일 쓰기 버퍼 크기입니다. 너무 작으면 자잘한 쓰기가 늘고, 어느 정도 크게 두면 성능에 도움이 됩니다. 기본값이면 보통 충분합니다. |
-| `BlockWhenQueueFull` | `true` | `true`, `false` | 큐가 가득 찼을 때의 동작입니다. 기본값 `true`는 자리가 날 때까지 기다려서 로그 유실을 줄이는 쪽입니다. `false`로 바꾸면 프로그램은 더 계속 빨리 진행되지만, 로그가 몰릴 때 새 로그 일부를 버릴 수 있습니다. |
 
 ## 참고
 
@@ -267,6 +307,7 @@ using var logger = SPLogFactory.Create(options);
 - 그래서 `using var logger = ...` 패턴을 권장합니다.
 - 의도한 공유 append가 아니라면 여러 로거를 같은 파일 경로에 보내지 않는 것이 좋습니다.
 - 현재 구조는 로거 인스턴스당 백그라운드 worker 하나를 사용합니다.
+- 큐가 가득 차면 SPLog는 새 로그를 버리지 않고 자리가 날 때까지 기다립니다.
 ## FileConflictMode
 
 - `FileConflictMode` 옵션은 "같은 이름의 현재 대상 로그 파일이 이미 있을 때" 어떻게 처리할지 정합니다.

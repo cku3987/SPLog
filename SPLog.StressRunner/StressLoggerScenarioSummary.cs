@@ -1,16 +1,16 @@
 namespace SPLog.StressRunner;
 
-public sealed class StressRunSummary
+public sealed class StressLoggerScenarioSummary
 {
-    public string RunDirectory { get; set; } = string.Empty;
+    public string ScenarioName { get; set; } = string.Empty;
 
-    public DateTimeOffset StartedAt { get; set; }
+    public string? SharedLoggerKey { get; set; }
 
-    public DateTimeOffset EndedAt { get; set; }
+    public string? CategoryPath { get; set; }
 
-    public TimeSpan PlannedDuration { get; set; }
+    public string LoggerName { get; set; } = string.Empty;
 
-    public TimeSpan ActualDuration { get; set; }
+    public string ResolvedBaseFilePath { get; set; } = string.Empty;
 
     public int ProducerCount { get; set; }
 
@@ -24,11 +24,7 @@ public sealed class StressRunSummary
 
     public long TotalLogBytes { get; set; }
 
-    public long PeakWorkingSetBytes { get; set; }
-
     public bool LineCountValidationPassed { get; set; }
 
     public bool DroppedMessageValidationPassed { get; set; }
-
-    public List<StressLoggerScenarioSummary> ScenarioSummaries { get; set; } = [];
 }

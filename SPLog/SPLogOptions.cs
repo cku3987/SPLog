@@ -8,11 +8,15 @@ public sealed class SPLogOptions
 
     public bool UseUtcTimestamp { get; set; } = false;
 
+    public string TimestampFormat { get; set; } = "yyyy-MM-dd HH:mm:ss.fff";
+
     public bool IncludeThreadId { get; set; } = true;
 
     public bool IncludeLoggerName { get; set; } = true;
 
     public bool EnableConsole { get; set; } = true;
+
+    public bool IncludeSequenceNumber { get; set; } = false;
 
     public bool EnableFile { get; set; } = false;
 
@@ -34,8 +38,6 @@ public sealed class SPLogOptions
 
     public int FileBufferSize { get; set; } = 65536;
 
-    public bool BlockWhenQueueFull { get; set; } = true;
-
     internal void Normalize()
     {
         Name = string.IsNullOrWhiteSpace(Name) ? "SPLog" : Name.Trim();
@@ -47,8 +49,10 @@ public sealed class SPLogOptions
         Name = source.Name;
         MinimumLevel = source.MinimumLevel;
         UseUtcTimestamp = source.UseUtcTimestamp;
+        TimestampFormat = source.TimestampFormat;
         IncludeThreadId = source.IncludeThreadId;
         IncludeLoggerName = source.IncludeLoggerName;
+        IncludeSequenceNumber = source.IncludeSequenceNumber;
         EnableConsole = source.EnableConsole;
         EnableFile = source.EnableFile;
         FilePath = source.FilePath;
@@ -60,7 +64,6 @@ public sealed class SPLogOptions
         BatchSize = source.BatchSize;
         FlushIntervalMs = source.FlushIntervalMs;
         FileBufferSize = source.FileBufferSize;
-        BlockWhenQueueFull = source.BlockWhenQueueFull;
     }
 
     internal SPLogOptions Clone()
@@ -70,8 +73,10 @@ public sealed class SPLogOptions
             Name = Name,
             MinimumLevel = MinimumLevel,
             UseUtcTimestamp = UseUtcTimestamp,
+            TimestampFormat = TimestampFormat,
             IncludeThreadId = IncludeThreadId,
             IncludeLoggerName = IncludeLoggerName,
+            IncludeSequenceNumber = IncludeSequenceNumber,
             EnableConsole = EnableConsole,
             EnableFile = EnableFile,
             FilePath = FilePath,
@@ -82,8 +87,7 @@ public sealed class SPLogOptions
             QueueCapacity = QueueCapacity,
             BatchSize = BatchSize,
             FlushIntervalMs = FlushIntervalMs,
-            FileBufferSize = FileBufferSize,
-            BlockWhenQueueFull = BlockWhenQueueFull
+            FileBufferSize = FileBufferSize
         };
     }
 
@@ -114,6 +118,20 @@ public sealed class SPLogOptions
         if (FileBufferSize < 1024)
         {
             throw new ArgumentOutOfRangeException(nameof(FileBufferSize));
+        }
+
+        if (string.IsNullOrWhiteSpace(TimestampFormat))
+        {
+            throw new ArgumentException("TimestampFormat is required.", nameof(TimestampFormat));
+        }
+
+        try
+        {
+            _ = DateTime.Now.ToString(TimestampFormat);
+        }
+        catch (FormatException ex)
+        {
+            throw new ArgumentException("TimestampFormat must be a valid .NET DateTime format string.", nameof(TimestampFormat), ex);
         }
 
         if (MaxFileSizeBytes <= 0)

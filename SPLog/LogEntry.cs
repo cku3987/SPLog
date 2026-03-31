@@ -6,4 +6,5 @@ public readonly record struct LogEntry(
     string LoggerName,
     int ThreadId,
     string Message,
-    string? ExceptionText = null);
+    string? ExceptionText = null,
+    long SequenceNumber = 0);

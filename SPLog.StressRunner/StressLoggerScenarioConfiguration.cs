@@ -2,17 +2,13 @@ using SPLog;
 
 namespace SPLog.StressRunner;
 
-public sealed class StressRunnerConfiguration
+public sealed class StressLoggerScenarioConfiguration
 {
-    public string RunName { get; set; } = "LongRun";
+    public string ScenarioName { get; set; } = "Primary";
 
-    public string OutputRoot { get; set; } = "artifacts/stress";
+    public string? SharedLoggerKey { get; set; }
 
-    public string LogSubdirectory { get; set; } = "logs";
-
-    public TimeSpan Duration { get; set; } = TimeSpan.FromDays(3);
-
-    public TimeSpan StatusInterval { get; set; } = TimeSpan.FromSeconds(30);
+    public string? CategoryPath { get; set; }
 
     public int ProducerCount { get; set; } = Math.Max(2, Environment.ProcessorCount);
 
@@ -28,13 +24,12 @@ public sealed class StressRunnerConfiguration
 
     public bool CountOnlyMessagePrefixMatches { get; set; } = true;
 
-    public string MessagePrefix { get; set; } = "LONGRUN|";
+    public string MessagePrefix { get; set; } = "LONGRUN|PRIMARY|";
 
     public SPLogOptions LogOptions { get; set; } = new()
     {
-        Name = "LongRun",
+        Name = "Primary",
         MinimumLevel = LogLevel.Information,
-        TimestampFormat = "yyyy-MM-dd HH:mm:ss.fffff",
         EnableConsole = false,
         EnableFile = true,
         FilePath = "logs",
@@ -47,6 +42,4 @@ public sealed class StressRunnerConfiguration
         FlushIntervalMs = 100,
         FileBufferSize = 65536
     };
-
-    public List<StressLoggerScenarioConfiguration> LoggerScenarios { get; set; } = [];
 }

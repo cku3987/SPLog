@@ -40,6 +40,40 @@
 }</code></pre>
   <p>이 방식은 애플리케이션 전체에서 하나의 로거를 오래 들고 쓰고 싶을 때 맞습니다.</p>
 
+  <h2>권장 사용 방식 1A: 전역 로거 하나에 카테고리 나누기</h2>
+  <pre><code><span class="kw">public static class</span> AppLog
+{
+    <span class="kw">public static</span> SPLogger Root { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">null</span>!;
+    <span class="kw">public static</span> SPLogger Core { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">null</span>!;
+    <span class="kw">public static</span> SPLogger Network { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">null</span>!;
+
+    <span class="kw">public static</span> <span class="type">void</span> Initialize()
+    {
+        Root = SPLogFactory.Create(options =&gt;
+        {
+            options.Name = <span class="str">"App"</span>;
+            options.EnableFile = <span class="kw">true</span>;
+            options.FilePath = <span class="str">"logs"</span>;
+        });
+
+        Core = Root.CreateCategory(<span class="str">"Core"</span>);
+        Network = Root.CreateCategory(<span class="str">"Network"</span>);
+    }
+
+    <span class="kw">public static</span> <span class="type">void</span> Shutdown()
+    {
+        Root.Dispose();
+    }
+}</code></pre>
+  <p>이 방식은 전역 로거는 하나로 유지하면서도, 로그 안에서는 파트별 이름을 구분해서 보고 싶을 때 좋습니다.</p>
+  <ul>
+    <li>루트 로거 이름이 <code>App</code>일 때 <code>CreateCategory("Network")</code>를 만들면 로그 이름은 <code>App.Network</code>가 됩니다.</li>
+    <li>한 단계 더 내려가서 <code>App.Network.Socket</code>처럼 중첩 카테고리도 만들 수 있습니다.</li>
+    <li>카테고리 로거는 루트 로거와 같은 큐, 같은 백그라운드 worker, 같은 파일 출력을 공유합니다.</li>
+    <li>실제 리소스를 소유하는 것은 루트 로거입니다. 보통 종료 시점에는 루트 로거만 <code>Dispose()</code> 하면 됩니다.</li>
+    <li>카테고리 로거에 <code>Dispose()</code>를 호출해도 안전하지만, 공유 writer를 닫지는 않습니다.</li>
+  </ul>
+
   <h2>권장 사용 방식 2: 짧은 범위에서만 쓰는 로거</h2>
   <pre><code><span class="kw">using</span> <span class="kw">var</span> coreLog = SPLogFactory.Create(options =&gt;
 {
@@ -165,21 +199,23 @@ SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.c
     <tr><td><code>Name</code></td><td><code>SPLog</code></td><td>비어 있지 않은 문자열</td><td>로그 한 줄에 기록될 이름입니다. <code>FilePath</code>가 폴더일 때는 자동 파일명에도 사용됩니다.</td></tr>
     <tr><td><code>MinimumLevel</code></td><td><code>Information</code></td><td><code>Trace</code>, <code>Debug</code>, <code>Information</code>, <code>Warning</code>, <code>Error</code>, <code>Critical</code>, <code>None</code></td><td><code>Trace</code>는 거의 모든 로그를 남기고, <code>Debug</code>는 개발용, <code>Information</code>은 일반 운영 기본값, <code>Warning</code>은 이상 징후 위주, <code>Error</code>는 실패 위주, <code>Critical</code>은 치명적 오류만 남깁니다. <code>None</code>은 로그를 모두 끕니다.</td></tr>
     <tr><td><code>UseUtcTimestamp</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td><code>false</code>면 로컬 시간, <code>true</code>면 UTC로 기록합니다. 여러 서버를 함께 운영하면 UTC가 편합니다.</td></tr>
+    <tr><td><code>TimestampFormat</code></td><td><code>yyyy-MM-dd HH:mm:ss.fff</code></td><td>유효한 .NET <code>DateTime</code> 포맷 문자열</td><td>타임스탬프 전체 모양을 정합니다. 기본값은 <code>2026-03-31 15:49:00.912</code>처럼 읽기 쉬운 형식입니다. 더 세밀한 시간 표시가 필요하면 <code>yyyy-MM-dd HH:mm:ss.fffff</code>처럼 바꿀 수 있고, 시간대 표기가 필요하면 <code>K</code>나 <code>zzz</code> 같은 토큰도 넣을 수 있습니다. 자릿수만 따로 정하는 방식보다 정밀도와 모양을 한 번에 제어할 수 있어서 더 유연합니다.</td></tr>
     <tr><td><code>IncludeThreadId</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>로그를 남긴 스레드 번호를 기록합니다. 동시에 여러 작업이 도는 프로그램이면 켜 두는 편이 좋습니다.</td></tr>
-    <tr><td><code>IncludeLoggerName</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>로그 한 줄에 로거 이름을 같이 찍습니다. 여러 로거를 나눠 쓰면 보통 켜 두는 편이 좋습니다.</td></tr>
+    <tr><td><code>IncludeLoggerName</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>로그 한 줄에 로거 이름을 같이 찍습니다. 여러 로거를 나눠 쓰거나, <code>App.Network</code> 같은 카테고리 로거를 쓰거나, 어느 파트에서 나온 로그인지 보고 싶다면 보통 켜 두는 편이 좋습니다.</td></tr>
+    <tr><td><code>IncludeSequenceNumber</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>로그 한 줄에 <code>[Q:123]</code> 같은 큐 순서 번호를 같이 찍습니다. 이 값은 롱런 테스트, 동시성 분석, 로그 순서 디버깅에 특히 유용합니다. 일반적인 애플리케이션 로그에서는 줄이 길어질 수 있으므로 기본값은 <code>false</code>입니다.</td></tr>
     <tr><td><code>EnableConsole</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>콘솔 창에도 로그를 출력합니다. 개발 중이나 테스트 중에 유용합니다.</td></tr>
     <tr><td><code>EnableFile</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>파일로 로그를 남깁니다. 실제 프로그램에서는 대부분 켭니다.</td></tr>
     <tr><td><code>FilePath</code></td><td><code>logs</code></td><td>폴더 경로 또는 전체 파일 경로</td><td><code>logs</code>처럼 폴더만 주면 SPLog가 <code>&lt;Name&gt;.log</code>를 자동 생성합니다. 상대 경로는 exe 폴더 기준이고, 절대 경로는 그대로 사용합니다.</td></tr>
     <tr><td><code>FileRollingMode</code></td><td><code>Daily</code></td><td><code>None</code>, <code>Daily</code>, <code>Hourly</code></td><td><code>None</code>은 날짜나 시간 suffix 없이 사용합니다. <code>Daily</code>는 하루마다, <code>Hourly</code>는 한 시간마다 파일을 나눕니다. 로그 양이 많으면 <code>Hourly</code>가 관리하기 쉽습니다.</td></tr>
     <tr><td><code>MaxFileSizeBytes</code></td><td><code>10485760</code> (10 MB)</td><td>0보다 큰 정수</td><td>이 크기에 도달하면 다음 번호 파일로 넘어갑니다. 크게 하면 파일 수는 줄고, 작게 하면 파일 관리가 쉬워집니다.</td></tr>
     <tr><td><code>MaxRollingFiles</code></td><td><code>14</code></td><td>0보다 큰 정수</td><td>최신 rolling 파일을 몇 개까지 남길지 정합니다. 오래된 파일은 자동 삭제됩니다.</td></tr>
-    <tr><td><code>QueueCapacity</code></td><td><code>8192</code></td><td>0보다 큰 정수</td><td>메모리에 잠깐 쌓아둘 수 있는 로그 개수입니다. 너무 작으면 폭주 시 일부 로그가 버려질 수 있고, 너무 크면 메모리를 더 사용합니다.</td></tr>
+    <tr><td><code>QueueCapacity</code></td><td><code>8192</code></td><td>0보다 큰 정수</td><td>메모리에 잠깐 쌓아둘 수 있는 로그 개수입니다. 값이 너무 작으면 로그 폭주 때 더 빨리 대기가 걸릴 수 있고, 너무 크면 메모리를 더 사용합니다. SPLog는 큐가 가득 차면 버리기보다 기다리는 쪽을 선택합니다.</td></tr>
     <tr><td><code>BatchSize</code></td><td><code>10</code></td><td>0보다 큰 정수</td><td>한 번에 묶어서 처리할 최대 로그 개수입니다. 기본값 <code>10</code>은 일반적인 사용에서 속도와 단순함의 균형이 괜찮은 값입니다. SPLog는 10개가 다 찰 때까지 무조건 기다리지 않고, 지금 들어와 있는 개수만큼 먼저 기록할 수 있습니다. 값을 키우면 보통 파일 쓰기 성능이 좋아집니다.</td></tr>
     <tr><td><code>FlushIntervalMs</code></td><td><code>100</code></td><td>0보다 큰 정수</td><td>백그라운드 flush 주기입니다. 작게 하면 더 빨리 파일에 보이지만 I/O가 늘고, 크게 하면 성능은 좋아질 수 있지만 파일 반영은 조금 늦어집니다.</td></tr>
     <tr><td><code>FileBufferSize</code></td><td><code>65536</code></td><td><code>1024</code> 이상 정수</td><td>파일 쓰기 버퍼 크기입니다. 기본값이면 대부분 충분합니다.</td></tr>
-    <tr><td><code>BlockWhenQueueFull</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>기본값 <code>true</code>는 자리가 날 때까지 기다려서 로그 유실을 줄이는 쪽입니다. <code>false</code>로 바꾸면 프로그램은 더 빨리 진행되지만, 로그 폭주 시 새 로그 일부를 버릴 수 있습니다.</td></tr>
   </table>
   <h2>FileConflictMode</h2>
+  <p>큐가 가득 차면 SPLog는 새 로그를 버리지 않고 자리가 날 때까지 기다립니다.</p>
   <ul>
     <li><code>FileConflictMode</code> 옵션은 같은 이름의 현재 대상 로그 파일이 이미 있을 때 어떻게 처리할지 정합니다.</li>
     <li><code>Append</code>: 기존 파일에 그대로 이어서 기록합니다.</li>

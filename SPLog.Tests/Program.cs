@@ -7,6 +7,10 @@ var tests = new (string Name, Func<Task> Execute)[]
     ("Dispose flushes queued messages", DisposeFlushesQueuedMessagesAsync),
     ("BatchSize does not wait for a full batch", BatchSizeDoesNotWaitForFullBatchAsync),
     ("MinimumLevel filters lower levels", MinimumLevelFiltersMessagesAsync),
+    ("Category loggers share the same writer and keep hierarchical names", CategoryLoggersShareWriterAsync),
+    ("Sequence numbers can be included for ordering diagnostics", SequenceNumbersCanBeIncludedAsync),
+    ("Timestamp format can be customized", TimestampFormatCanBeCustomizedAsync),
+    ("Timestamp normalization keeps output order monotonic", TimestampNormalizationKeepsMonotonicOrderAsync),
     ("Exception logging writes exception details", ExceptionLoggingWritesDetailsAsync),
     ("Append reuses the current target file", AppendReusesExistingFileAsync),
     ("CreateNew creates the next suffixed file", CreateNewCreatesSuffixedFileAsync),
@@ -109,6 +113,110 @@ static Task MinimumLevelFiltersMessagesAsync()
     TestAssert.False(content.Contains("LEVEL|INFO", StringComparison.Ordinal), "Information messages should be filtered out.");
     TestAssert.True(content.Contains("LEVEL|WARN", StringComparison.Ordinal), "Warning should be written.");
     TestAssert.True(content.Contains("LEVEL|ERR", StringComparison.Ordinal), "Error should be written.");
+    return Task.CompletedTask;
+}
+
+static Task CategoryLoggersShareWriterAsync()
+{
+    using var scope = new TestScope();
+    var logDirectory = scope.CreateSubdirectory("logs");
+
+    using var rootLogger = SPLogFactory.Create(options =>
+    {
+        options.Name = "App";
+        options.EnableConsole = false;
+        options.EnableFile = true;
+        options.FilePath = logDirectory;
+        options.FileRollingMode = FileRollingMode.None;
+    });
+
+    var networkLogger = rootLogger.CreateCategory("Network");
+    var socketLogger = networkLogger.CreateCategory("Socket");
+
+    networkLogger.Information("CAT|NETWORK");
+    socketLogger.Warning("CAT|SOCKET");
+    networkLogger.Dispose();
+    rootLogger.Information("CAT|ROOT");
+
+    var files = TestHelpers.GetLogFiles(logDirectory);
+    TestAssert.Equal(1, files.Length, "Category loggers should share the same underlying file writer.");
+
+    var content = TestHelpers.ReadAllLogText(logDirectory);
+    TestAssert.True(content.Contains("[App.Network]", StringComparison.Ordinal), "Child category logger should include the combined logger name.");
+    TestAssert.True(content.Contains("[App.Network.Socket]", StringComparison.Ordinal), "Nested category logger should include the full hierarchical logger name.");
+    TestAssert.True(content.Contains("[App]", StringComparison.Ordinal), "Root logger should keep the base logger name.");
+    TestAssert.True(content.Contains("CAT|ROOT", StringComparison.Ordinal), "Disposing a category logger should not stop the root logger.");
+    return Task.CompletedTask;
+}
+
+static Task SequenceNumbersCanBeIncludedAsync()
+{
+    using var scope = new TestScope();
+    var logDirectory = scope.CreateSubdirectory("logs");
+
+    using (var logger = SPLogFactory.Create(options =>
+           {
+               options.Name = "SequenceHeaderTest";
+               options.EnableConsole = false;
+               options.EnableFile = true;
+               options.IncludeSequenceNumber = true;
+               options.FilePath = logDirectory;
+               options.FileRollingMode = FileRollingMode.None;
+           }))
+    {
+        logger.Information("ORDER|1");
+        logger.Information("ORDER|2");
+        logger.Information("ORDER|3");
+    }
+
+    var content = TestHelpers.ReadAllLogText(logDirectory);
+    TestAssert.True(content.Contains("[Q:1]", StringComparison.Ordinal), "Sequence header should include the first queue order number.");
+    TestAssert.True(content.Contains("[Q:2]", StringComparison.Ordinal), "Sequence header should include the second queue order number.");
+    TestAssert.True(content.Contains("[Q:3]", StringComparison.Ordinal), "Sequence header should include the third queue order number.");
+    return Task.CompletedTask;
+}
+
+static Task TimestampFormatCanBeCustomizedAsync()
+{
+    using var scope = new TestScope();
+    var logDirectory = scope.CreateSubdirectory("logs");
+
+    using (var logger = SPLogFactory.Create(options =>
+           {
+               options.Name = "PrecisionTest";
+               options.EnableConsole = false;
+               options.EnableFile = true;
+               options.FilePath = logDirectory;
+               options.FileRollingMode = FileRollingMode.None;
+               options.TimestampFormat = "yyyy-MM-dd HH:mm:ss.fffff";
+           }))
+    {
+        logger.Information("PRECISION|1");
+    }
+
+    var content = TestHelpers.ReadAllLogText(logDirectory);
+    TestAssert.True(
+        System.Text.RegularExpressions.Regex.IsMatch(content, @"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{5}\]"),
+        "The formatted timestamp should use the configured custom format.");
+    return Task.CompletedTask;
+}
+
+static Task TimestampNormalizationKeepsMonotonicOrderAsync()
+{
+    var baseTime = new DateTime(2026, 3, 31, 15, 15, 35, 523, DateTimeKind.Local);
+    var entries = new[]
+    {
+        new LogEntry(baseTime, LogLevel.Information, "App.Core", 7, "MSG|1"),
+        new LogEntry(baseTime.AddMilliseconds(-7), LogLevel.Information, "App", 10, "MSG|2"),
+        new LogEntry(baseTime.AddMilliseconds(1), LogLevel.Information, "App.Network", 11, "MSG|3")
+    };
+
+    long lastTimestampTicks = 0;
+    MonotonicTimestampNormalizer.NormalizeInPlace(entries, ref lastTimestampTicks);
+
+    TestAssert.True(entries[0].Timestamp <= entries[1].Timestamp, "Normalized timestamps should not move backward between entry 1 and entry 2.");
+    TestAssert.True(entries[1].Timestamp <= entries[2].Timestamp, "Normalized timestamps should not move backward between entry 2 and entry 3.");
+    TestAssert.Equal(baseTime, entries[1].Timestamp, "An earlier timestamp should be clamped to the last written timestamp.");
     return Task.CompletedTask;
 }
 

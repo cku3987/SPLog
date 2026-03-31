@@ -30,6 +30,45 @@ public static class AppLog
 
 Use this when the logger should live for the whole application and be reused from many places.
 
+Recommended pattern 1A: one global logger with categories
+
+```csharp
+public static class AppLog
+{
+    public static SPLogger Root { get; private set; } = null!;
+    public static SPLogger Core { get; private set; } = null!;
+    public static SPLogger Network { get; private set; } = null!;
+
+    public static void Initialize()
+    {
+        Root = SPLogFactory.Create(options =>
+        {
+            options.Name = "App";
+            options.EnableFile = true;
+            options.FilePath = "logs";
+        });
+
+        Core = Root.CreateCategory("Core");
+        Network = Root.CreateCategory("Network");
+    }
+
+    public static void Shutdown()
+    {
+        Root.Dispose();
+    }
+}
+```
+
+Use this when you want one global logger instance and one shared writer, but still want to see subsystem names in the log.
+
+Important notes about categories:
+
+- `CreateCategory("Network")` under a root logger named `App` produces the logger name `App.Network`.
+- You can create nested categories such as `App.Network.Socket`.
+- Category loggers share the same queue, background worker, and file targets as the root logger.
+- Only the root logger owns those resources. In normal use, dispose the root logger at shutdown.
+- Disposing a category logger is safe, but it does not close the shared writer because the root logger still owns it.
+
 Recommended pattern 2: short-lived logger
 
 ```csharp
@@ -257,8 +296,10 @@ Examples with `Name = "Core"` and `FilePath = "logs"`:
 | `Name` | `SPLog` | Any non-empty text | This is the logger name written into each log line. It is also used as the automatic file name when `FilePath` is a folder. Example: if `Name = "Core"` and `FilePath = "logs"`, the file starts as `logs/Core.log`. |
 | `MinimumLevel` | `Information` | `Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical`, `None` | Decides which log levels are kept. `Trace` keeps everything. `Debug` is useful during development. `Information` is the usual default for normal app events. `Warning` keeps only suspicious or problematic events. `Error` keeps only failures. `Critical` keeps only severe failures. `None` disables all logging. |
 | `UseUtcTimestamp` | `false` | `true`, `false` | When `false`, logs use local machine time, which is easier to read on one machine. When `true`, logs use UTC, which is better when several servers or regions write logs and you need one common time standard. |
+| `TimestampFormat` | `yyyy-MM-dd HH:mm:ss.fff` | Any valid .NET `DateTime` format string | Controls the entire timestamp format. The default value prints a readable local-style timestamp such as `2026-03-31 15:49:00.912`. If you want more precision, you can use formats like `yyyy-MM-dd HH:mm:ss.fffff`. If you want timezone text, you can include format tokens such as `K` or `zzz`. This option is more flexible than a fixed digit-only setting because you can control both precision and layout. |
 | `IncludeThreadId` | `true` | `true`, `false` | Adds the managed thread ID to each line. Keep this `true` when multiple tasks or threads run at the same time and you may need to track which thread produced a message. Turn it `false` if you want slightly cleaner log lines and thread information is not useful. |
-| `IncludeLoggerName` | `true` | `true`, `false` | Adds the logger name to each log line. Keep this `true` if you use more than one logger or want to know which subsystem produced the message. Turn it `false` only if you want shorter lines and already separate logs by file. |
+| `IncludeLoggerName` | `true` | `true`, `false` | Adds the logger name to each log line. Keep this `true` if you use more than one logger, use category loggers such as `App.Network`, or want to know which subsystem produced the message. Turn it `false` only if you want shorter lines and already separate logs by file. |
+| `IncludeSequenceNumber` | `false` | `true`, `false` | Adds a queue-order number such as `[Q:123]` to each line. This is most useful for long-run tests, concurrency analysis, or debugging log ordering. For normal application logs, the default `false` keeps lines shorter. |
 | `EnableConsole` | `true` | `true`, `false` | Writes logs to the console window. Good during development, testing, or command-line tools. In Windows services or background apps, this may not be useful. |
 | `EnableFile` | `false` | `true`, `false` | Writes logs to files. In most real applications this should be `true`. If both `EnableConsole` and `EnableFile` are `false`, logger creation fails because there is nowhere to write logs. |
 | `FilePath` | `logs` | Folder path or full file path | This is the base log location. If you pass a folder path like `logs`, SPLog creates `<Name>.log` automatically. If you pass a full file path like `D:\Logs\custom.log`, SPLog uses that file name directly. Relative paths use the executable folder as the base. |
@@ -266,15 +307,14 @@ Examples with `Name = "Core"` and `FilePath = "logs"`:
 | `FileRollingMode` | `Daily` | `None`, `Daily`, `Hourly` | Controls time-based file splitting. `None` means no date or time suffix. `Daily` creates one logical file per day using `yyyyMMdd`. `Hourly` creates one logical file per hour using `yyyyMMdd_HH`. If you expect very high log volume, `Hourly` is usually easier to manage. |
 | `MaxFileSizeBytes` | `10485760` | Any positive integer | Maximum file size before SPLog rolls to the next numbered file. Default is 10 MB. Larger values create fewer files but each file becomes heavier. Smaller values create more files but make upload, inspection, and cleanup easier. |
 | `MaxRollingFiles` | `14` | Any positive integer | How many recent rolled files are kept. Older files are deleted automatically. Increase this if you want longer history on disk. Decrease it if disk space matters more than long retention. |
-| `QueueCapacity` | `8192` | Any positive integer | Number of log entries that may wait in memory before background writing catches up. If this is too small, bursts may drop logs. If this is too large, memory usage rises. For normal desktop/server apps, the default is reasonable. |
+| `QueueCapacity` | `8192` | Any positive integer | Number of log entries that may wait in memory before background writing catches up. If this is too small, bursts can apply backpressure sooner because SPLog now waits instead of dropping. If this is too large, memory usage rises. For normal desktop/server apps, the default is reasonable. |
 | `BatchSize` | `10` | Any positive integer | Maximum number of log entries written together in one background batch. The default `10` is a practical balance for normal use. SPLog does not wait until all 10 entries exist; if fewer entries are available, it writes the smaller batch. Larger values usually improve write performance because the logger touches the file fewer times. |
 | `FlushIntervalMs` | `100` | Any positive integer | Background flush interval in milliseconds. `100` means roughly every 0.1 seconds. Smaller values make logs appear on disk sooner, but increase I/O frequency. Larger values reduce I/O overhead, but logs stay in memory a little longer before reaching the file. |
 | `FileBufferSize` | `65536` | `1024` or larger | Buffer size used by file writing. Bigger buffers can reduce repeated small writes and help performance. The default is already large enough for most cases. |
-| `BlockWhenQueueFull` | `true` | `true`, `false` | Controls what happens when the queue is full. The default `true` means the app waits for queue space so logs are less likely to be lost. If you change it to `false`, the app keeps running without waiting, but some new logs may be dropped during heavy bursts. |
-
 ## Notes
 
 - Always dispose each logger to flush remaining queued entries.
 - `using var logger = ...` is the recommended pattern for this reason.
 - Avoid multiple logger instances writing to the same file path unless shared append behavior is intentional.
 - Current design uses one background worker per logger instance.
+- If the queue becomes full, SPLog waits for space instead of dropping new log entries.

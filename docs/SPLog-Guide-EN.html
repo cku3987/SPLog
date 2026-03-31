@@ -40,6 +40,40 @@
 }</code></pre>
   <p>Use this when one logger should live for the whole application and be reused from many places.</p>
 
+  <h2>Recommended Pattern 1A: One Global Logger With Categories</h2>
+  <pre><code><span class="kw">public static class</span> AppLog
+{
+    <span class="kw">public static</span> SPLogger Root { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">null</span>!;
+    <span class="kw">public static</span> SPLogger Core { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">null</span>!;
+    <span class="kw">public static</span> SPLogger Network { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">null</span>!;
+
+    <span class="kw">public static</span> <span class="type">void</span> Initialize()
+    {
+        Root = SPLogFactory.Create(options =&gt;
+        {
+            options.Name = <span class="str">"App"</span>;
+            options.EnableFile = <span class="kw">true</span>;
+            options.FilePath = <span class="str">"logs"</span>;
+        });
+
+        Core = Root.CreateCategory(<span class="str">"Core"</span>);
+        Network = Root.CreateCategory(<span class="str">"Network"</span>);
+    }
+
+    <span class="kw">public static</span> <span class="type">void</span> Shutdown()
+    {
+        Root.Dispose();
+    }
+}</code></pre>
+  <p>Use this when you want one global logger and one shared writer, but still want subsystem names inside the log.</p>
+  <ul>
+    <li><code>CreateCategory("Network")</code> under a root logger named <code>App</code> produces <code>App.Network</code>.</li>
+    <li>You can create nested categories such as <code>App.Network.Socket</code>.</li>
+    <li>Category loggers share the same queue, background worker, and file targets as the root logger.</li>
+    <li>Only the root logger owns those resources, so in normal use you dispose the root logger at shutdown.</li>
+    <li>Disposing a category logger is safe, but it does not close the shared writer.</li>
+  </ul>
+
   <h2>Recommended Pattern 2: Short-Lived Logger</h2>
   <pre><code><span class="kw">using</span> <span class="kw">var</span> coreLog = SPLogFactory.Create(options =&gt;
 {
@@ -165,8 +199,10 @@ SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.c
     <tr><td><code>Name</code></td><td><code>SPLog</code></td><td>Any non-empty text</td><td>This name is written into each log line. When <code>FilePath</code> is a folder, it is also used as the automatic file name.</td></tr>
     <tr><td><code>MinimumLevel</code></td><td><code>Information</code></td><td><code>Trace</code>, <code>Debug</code>, <code>Information</code>, <code>Warning</code>, <code>Error</code>, <code>Critical</code>, <code>None</code></td><td><code>Trace</code> keeps everything. <code>Debug</code> is useful during development. <code>Information</code> is the normal default. <code>Warning</code> keeps suspicious events. <code>Error</code> keeps failures. <code>Critical</code> keeps only severe failures. <code>None</code> disables logging.</td></tr>
     <tr><td><code>UseUtcTimestamp</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td><code>false</code> uses local machine time. <code>true</code> uses UTC, which is useful when multiple servers or regions write logs.</td></tr>
+    <tr><td><code>TimestampFormat</code></td><td><code>yyyy-MM-dd HH:mm:ss.fff</code></td><td>Any valid .NET <code>DateTime</code> format string</td><td>Controls the entire timestamp format. The default value prints a readable timestamp such as <code>2026-03-31 15:49:00.912</code>. If you want more precision, you can use formats like <code>yyyy-MM-dd HH:mm:ss.fffff</code>. If you want timezone text, you can include tokens such as <code>K</code> or <code>zzz</code>. This is more flexible than a fixed digit-only option because you can control both precision and layout.</td></tr>
     <tr><td><code>IncludeThreadId</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>Adds the managed thread ID. Keep it on when several tasks or threads run at the same time.</td></tr>
-    <tr><td><code>IncludeLoggerName</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>Adds the logger name to each line. Usually useful when more than one logger exists.</td></tr>
+    <tr><td><code>IncludeLoggerName</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>Adds the logger name to each line. Keep this enabled when you use more than one logger, use category loggers such as <code>App.Network</code>, or want to see which subsystem produced the message.</td></tr>
+    <tr><td><code>IncludeSequenceNumber</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>Adds a queue-order number such as <code>[Q:123]</code> to each line. This is most useful for long-run tests, concurrency analysis, or debugging log ordering. For normal application logs, the default <code>false</code> keeps lines shorter.</td></tr>
     <tr><td><code>EnableConsole</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>Writes to the console window. Useful during development and testing.</td></tr>
     <tr><td><code>EnableFile</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>Writes to files. Usually enabled in real applications.</td></tr>
     <tr><td><code>FilePath</code></td><td><code>logs</code></td><td>Folder path or full file path</td><td>If you pass a folder like <code>logs</code>, SPLog creates <code>&lt;Name&gt;.log</code> automatically. Relative paths use the executable folder. Absolute paths are used as-is.</td></tr>
@@ -174,11 +210,10 @@ SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.c
     <tr><td><code>FileRollingMode</code></td><td><code>Daily</code></td><td><code>None</code>, <code>Daily</code>, <code>Hourly</code></td><td><code>None</code> means no time suffix. <code>Daily</code> splits files by day using <code>yyyyMMdd</code>. <code>Hourly</code> splits by hour using <code>yyyyMMdd_HH</code>. High-volume applications often benefit from <code>Hourly</code>.</td></tr>
     <tr><td><code>MaxFileSizeBytes</code></td><td><code>10485760</code> (10 MB)</td><td>Any positive integer</td><td>Maximum size before SPLog rolls to the next numbered file. Bigger values create fewer files. Smaller values are easier to inspect and move.</td></tr>
     <tr><td><code>MaxRollingFiles</code></td><td><code>14</code></td><td>Any positive integer</td><td>How many recent rolled files are kept. Older files are deleted automatically.</td></tr>
-    <tr><td><code>QueueCapacity</code></td><td><code>8192</code></td><td>Any positive integer</td><td>How many log entries may wait in memory before background writing catches up. Too small can drop logs during bursts. Too large uses more memory.</td></tr>
+    <tr><td><code>QueueCapacity</code></td><td><code>8192</code></td><td>Any positive integer</td><td>How many log entries may wait in memory before background writing catches up. If this is too small, bursts can apply backpressure sooner because SPLog now waits instead of dropping. Too large uses more memory.</td></tr>
     <tr><td><code>BatchSize</code></td><td><code>10</code></td><td>Any positive integer</td><td>Maximum number of log entries written together in one background batch. The default <code>10</code> is a practical balance for normal use. SPLog does not wait until all 10 entries exist; if fewer entries are available, it writes the smaller batch. Larger values often improve performance.</td></tr>
     <tr><td><code>FlushIntervalMs</code></td><td><code>100</code></td><td>Any positive integer</td><td>Background flush interval in milliseconds. Smaller values flush sooner but increase I/O frequency. Larger values reduce I/O but delay file output slightly.</td></tr>
     <tr><td><code>FileBufferSize</code></td><td><code>65536</code></td><td><code>1024</code> or larger</td><td>Buffer size used by file writing. The default is already suitable for most cases.</td></tr>
-    <tr><td><code>BlockWhenQueueFull</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>The default <code>true</code> waits for queue space so logs are less likely to be lost. If you change it to <code>false</code>, the app keeps moving without waiting, but some new logs may be dropped during heavy bursts.</td></tr>
   </table>
 
   <h2>Rolling Behavior</h2>
@@ -197,5 +232,6 @@ SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.c
     <li>If size rolling overlaps with <code>CreateNew</code>, the numbering continues. Example: start with <code>Core_20260313_001.log</code>, then if that file exceeds <code>MaxFileSizeBytes</code>, SPLog rolls to <code>Core_20260313_002.log</code>, then <code>Core_20260313_003.log</code>.</li>
     <li>If size rolling overlaps with <code>Append</code>, SPLog appends to the current file first and then rolls to the next numbered file when the size limit is reached.</li>
   </ul>
+  <p>If the queue becomes full, SPLog waits for space instead of dropping new log entries.</p>
 </body>
 </html>

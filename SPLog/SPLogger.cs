@@ -6,14 +6,37 @@ public sealed class SPLogger : IDisposable
 {
     private readonly SPLogOptions _options;
     private readonly AsyncLogProcessor _processor;
+    private readonly string _loggerName;
+    private readonly bool _ownsProcessor;
 
     internal SPLogger(SPLogOptions options, AsyncLogProcessor processor)
+        : this(options, processor, options.Name, ownsProcessor: true)
+    {
+    }
+
+    private SPLogger(SPLogOptions options, AsyncLogProcessor processor, string loggerName, bool ownsProcessor)
     {
         _options = options;
         _processor = processor;
+        _loggerName = loggerName;
+        _ownsProcessor = ownsProcessor;
     }
 
+    public string Name => _loggerName;
+
     public bool IsEnabled(LogLevel level) => level >= _options.MinimumLevel && level != LogLevel.None;
+
+    public SPLogger CreateCategory(string categoryName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(categoryName);
+
+        var normalizedCategoryName = categoryName.Trim();
+        var childLoggerName = string.IsNullOrWhiteSpace(_loggerName)
+            ? normalizedCategoryName
+            : $"{_loggerName}.{normalizedCategoryName}";
+
+        return new SPLogger(_options, _processor, childLoggerName, ownsProcessor: false);
+    }
 
     public void Log(LogLevel level, string message)
     {
@@ -30,7 +53,7 @@ public sealed class SPLogger : IDisposable
         _processor.Enqueue(new LogEntry(
             Timestamp: _options.UseUtcTimestamp ? DateTime.UtcNow : DateTime.Now,
             Level: level,
-            LoggerName: _options.Name,
+            LoggerName: _loggerName,
             ThreadId: Environment.CurrentManagedThreadId,
             Message: message,
             ExceptionText: exception is null ? null : ExceptionDetails.Build(exception)));
@@ -70,6 +93,9 @@ public sealed class SPLogger : IDisposable
 
     public void Dispose()
     {
-        _processor.Dispose();
+        if (_ownsProcessor)
+        {
+            _processor.Dispose();
+        }
     }
 }

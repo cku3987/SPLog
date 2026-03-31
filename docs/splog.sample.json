@@ -2,6 +2,7 @@
   "Name": "Core",
   "MinimumLevel": "Information",
   "UseUtcTimestamp": false,
+  "TimestampFormat": "yyyy-MM-dd HH:mm:ss.fff",
   "IncludeThreadId": true,
   "IncludeLoggerName": true,
   "EnableConsole": true,
@@ -14,6 +15,5 @@
   "QueueCapacity": 8192,
   "BatchSize": 10,
   "FlushIntervalMs": 100,
-  "FileBufferSize": 65536,
-  "BlockWhenQueueFull": true
+  "FileBufferSize": 65536
 }
