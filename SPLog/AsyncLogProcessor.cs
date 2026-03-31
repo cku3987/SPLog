@@ -10,6 +10,7 @@ internal sealed class AsyncLogProcessor : IDisposable
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _worker;
     private int _droppedMessages;
+    private int _disposed;
 
     public AsyncLogProcessor(SPLogOptions options, ILogSink sink)
     {
@@ -69,9 +70,16 @@ internal sealed class AsyncLogProcessor : IDisposable
                     continue;
                 }
 
-                await _sink.WriteBatchAsync(buffer.AsMemory(0, count), token).ConfigureAwait(false);
+                await _sink.WriteBatchAsync(buffer.AsMemory(0, count), CancellationToken.None).ConfigureAwait(false);
 
-                await Task.Delay(_options.FlushIntervalMs, token).ConfigureAwait(false);
+                try
+                {
+                    await Task.Delay(_options.FlushIntervalMs, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
         }
         catch (OperationCanceledException)
@@ -105,6 +113,11 @@ internal sealed class AsyncLogProcessor : IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         _channel.Writer.TryComplete();
         _shutdown.Cancel();
         _worker.GetAwaiter().GetResult();
