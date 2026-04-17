@@ -4,7 +4,11 @@ public static class SPLogFactory
 {
     public static SPLogger Create(SPLogOptions options)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        if (options is null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
+
         options.Validate();
         var snapshot = options.Clone();
         var processor = new AsyncLogProcessor(snapshot, CreateSink(snapshot));

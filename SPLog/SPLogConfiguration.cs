@@ -6,7 +6,11 @@ public static class SPLogConfiguration
 {
     public static void Update(SPLogOptions options)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        if (options is null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
+
         var normalized = options.Clone();
         normalized.Validate();
         options.CopyFrom(normalized);
@@ -14,28 +18,43 @@ public static class SPLogConfiguration
 
     public static void UpdateFromJson(SPLogOptions options, string json)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        if (options is null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
+
         var loaded = LoadFromJson(json);
         options.CopyFrom(loaded);
     }
 
     public static void UpdateFromJsonFile(SPLogOptions options, string path)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        if (options is null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
+
         var loaded = LoadFromJsonFile(path);
         options.CopyFrom(loaded);
     }
 
     public static string SaveToJson(SPLogOptions options)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        if (options is null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
+
         Update(options);
         return JsonSerializer.Serialize(options, SPLogJson.SerializerOptions);
     }
 
     public static void SaveToJsonFile(SPLogOptions options, string path)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        if (options is null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
 
         var fullPath = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(fullPath);

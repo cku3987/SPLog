@@ -4,6 +4,12 @@ SPLog is a lightweight logging DLL focused on performance, simplicity, and pract
 
 GitHub repository: <https://github.com/cku3987/SPLog>
 
+Targets:
+
+- `net8.0`
+- `netstandard2.0`  
+  Usable from `.NET Framework 4.7.2` projects and newer compatible runtimes.
+
 ## Why SPLog
 
 - Simple API
@@ -82,8 +88,8 @@ Example JSON:
   "FilePath": "logs",
   "FileConflictMode": "Append",
   "FileRollingMode": "Hourly",
-  "MaxFileSizeBytes": 52428800,
-  "MaxRollingFiles": 500,
+  "MaxFileSizeBytes": 10485760,
+  "MaxRollingFiles": 100,
   "QueueCapacity": 8192,
   "BatchSize": 10,
   "FlushIntervalMs": 100,
@@ -111,6 +117,8 @@ This repository also includes validation helpers:
   Deterministic correctness checks
 - `SPLog.StressRunner`
   Stress, smoke, and long-run validation for one or many loggers at the same time
+- `SPLog.Net472.Verify`
+  Real `.NET Framework 4.7.2` reference/build/run verification
 
 Recommended commands:
 
@@ -118,6 +126,7 @@ Recommended commands:
 dotnet build SPLog.sln -c Release -m:1
 dotnet run --project SPLog.Tests\SPLog.Tests.csproj -c Release --no-build
 dotnet run --project SPLog.StressRunner\SPLog.StressRunner.csproj -c Release -- --config codex\SPLog-StressRunner.sample.json
+dotnet run --project SPLog.Net472.Verify\SPLog.Net472.Verify.csproj -c Release
 ```
 
 The default stress sample includes:

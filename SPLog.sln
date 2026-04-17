@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SPLog.Tests", "SPLog.Tests\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SPLog.StressRunner", "SPLog.StressRunner\SPLog.StressRunner.csproj", "{A815A7DC-7D4A-4497-BEC6-C3006977A170}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SPLog.Net472.Verify", "SPLog.Net472.Verify\SPLog.Net472.Verify.csproj", "{F9F6C54D-58A1-4C44-88FD-0C8D8D4B0B54}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{A815A7DC-7D4A-4497-BEC6-C3006977A170}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A815A7DC-7D4A-4497-BEC6-C3006977A170}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A815A7DC-7D4A-4497-BEC6-C3006977A170}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F9F6C54D-58A1-4C44-88FD-0C8D8D4B0B54}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F9F6C54D-58A1-4C44-88FD-0C8D8D4B0B54}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F9F6C54D-58A1-4C44-88FD-0C8D8D4B0B54}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F9F6C54D-58A1-4C44-88FD-0C8D8D4B0B54}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

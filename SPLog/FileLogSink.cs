@@ -35,10 +35,12 @@ internal sealed class FileLogSink : ILogSink
         {
             RotateIfNeeded();
             var line = SPLogFormatter.Format(batch[i], _options);
-            await _writer.WriteLineAsync(line.AsMemory(), cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            await _writer.WriteLineAsync(line).ConfigureAwait(false);
         }
 
-        await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        await _writer.FlushAsync().ConfigureAwait(false);
     }
 
     public void Dispose()
@@ -142,7 +144,7 @@ internal sealed class FileLogSink : ILogSink
                 continue;
             }
 
-            var suffix = name[(expectedBaseName.Length + 1)..];
+            var suffix = name.Substring(expectedBaseName.Length + 1);
             if (int.TryParse(suffix, out var parsed))
             {
                 maxSequence = Math.Max(maxSequence, parsed);
@@ -216,7 +218,7 @@ internal sealed class FileLogSink : ILogSink
     {
         var resolvedPath = Path.IsPathRooted(filePath)
             ? Path.GetFullPath(filePath)
-            : Path.GetFullPath(filePath, AppContext.BaseDirectory);
+            : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, filePath));
 
         if (LooksLikeDirectoryPath(filePath, resolvedPath))
         {
@@ -228,7 +230,8 @@ internal sealed class FileLogSink : ILogSink
 
     private static bool LooksLikeDirectoryPath(string originalPath, string resolvedPath)
     {
-        if (originalPath.EndsWith(Path.DirectorySeparatorChar) || originalPath.EndsWith(Path.AltDirectorySeparatorChar))
+        if (originalPath.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+            || originalPath.EndsWith(Path.AltDirectorySeparatorChar.ToString(), StringComparison.Ordinal))
         {
             return true;
         }

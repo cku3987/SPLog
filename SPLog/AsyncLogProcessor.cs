@@ -36,7 +36,7 @@ internal sealed class AsyncLogProcessor : IDisposable
             return;
         }
 
-        _channel.Writer.WriteAsync(entry).AsTask().GetAwaiter().GetResult();
+        _channel.Writer.WriteAsync(entry).GetAwaiter().GetResult();
     }
 
     public int DrainDroppedCount()

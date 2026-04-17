@@ -3,6 +3,7 @@ using System.Text;
 
 namespace SPLog;
 
+#if NET8_0_OR_GREATER
 [InterpolatedStringHandler]
 public ref struct SPLogInterpolatedStringHandler
 {
@@ -67,3 +68,4 @@ public ref struct SPLogInterpolatedStringHandler
         return _builder.ToString();
     }
 }
+#endif

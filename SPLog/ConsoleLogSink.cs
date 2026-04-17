@@ -19,7 +19,7 @@ internal sealed class ConsoleLogSink : ILogSink
             Console.WriteLine(line);
         }
 
-        return ValueTask.CompletedTask;
+        return default;
     }
 
     public void Dispose()

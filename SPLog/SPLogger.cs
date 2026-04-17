@@ -28,7 +28,10 @@ public sealed class SPLogger : IDisposable
 
     public SPLogger CreateCategory(string categoryName)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(categoryName);
+        if (string.IsNullOrWhiteSpace(categoryName))
+        {
+            throw new ArgumentException("Category name is required.", nameof(categoryName));
+        }
 
         var normalizedCategoryName = categoryName.Trim();
         var childLoggerName = string.IsNullOrWhiteSpace(_loggerName)
@@ -59,6 +62,7 @@ public sealed class SPLogger : IDisposable
             ExceptionText: exception is null ? null : ExceptionDetails.Build(exception)));
     }
 
+#if NET8_0_OR_GREATER
     public void Log(
         LogLevel level,
         [InterpolatedStringHandlerArgument("", "level")] ref SPLogInterpolatedStringHandler handler)
@@ -70,6 +74,7 @@ public sealed class SPLogger : IDisposable
 
         Log(level, handler.GetFormattedText());
     }
+#endif
 
     public void Trace(string message) => Log(LogLevel.Trace, message);
 
