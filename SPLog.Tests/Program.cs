@@ -6,6 +6,7 @@ var tests = new (string Name, Func<Task> Execute)[]
 {
     ("Dispose flushes queued messages", DisposeFlushesQueuedMessagesAsync),
     ("BatchSize does not wait for a full batch", BatchSizeDoesNotWaitForFullBatchAsync),
+    ("Queue backpressure waits instead of throwing", QueueBackpressureWaitsInsteadOfThrowingAsync),
     ("MinimumLevel filters lower levels", MinimumLevelFiltersMessagesAsync),
     ("Category loggers share the same writer and keep hierarchical names", CategoryLoggersShareWriterAsync),
     ("Sequence numbers can be included for ordering diagnostics", SequenceNumbersCanBeIncludedAsync),
@@ -87,6 +88,40 @@ static async Task BatchSizeDoesNotWaitForFullBatchAsync()
     await Task.Delay(300).ConfigureAwait(false);
 
     TestAssert.Equal(3, TestHelpers.CountMessageLines(logDirectory, "BATCH|"), "SPLog should write a partial batch without waiting for all 10 entries.");
+}
+
+static async Task QueueBackpressureWaitsInsteadOfThrowingAsync()
+{
+    using var sink = new BlockingLogSink();
+    using (var processor = new AsyncLogProcessor(
+               new SPLogOptions
+               {
+                   Name = "QueueBackpressureTest",
+                   BatchSize = 1,
+                   QueueCapacity = 1,
+                   FlushIntervalMs = 0
+               },
+               sink))
+    {
+        processor.Enqueue(new LogEntry(DateTime.UtcNow, LogLevel.Information, "QueueBackpressureTest", 1, "QUEUE|1"));
+        await sink.FirstWriteStarted.ConfigureAwait(false);
+
+        processor.Enqueue(new LogEntry(DateTime.UtcNow, LogLevel.Information, "QueueBackpressureTest", 1, "QUEUE|2"));
+
+        var blockedEnqueue = Task.Run(() =>
+            processor.Enqueue(new LogEntry(DateTime.UtcNow, LogLevel.Information, "QueueBackpressureTest", 1, "QUEUE|3")));
+
+        await Task.Delay(100).ConfigureAwait(false);
+
+        TestAssert.False(
+            blockedEnqueue.IsCompleted,
+            "When the queue is full, Enqueue should wait instead of throwing or finishing immediately.");
+
+        sink.ReleaseFirstWrite();
+        await blockedEnqueue.ConfigureAwait(false);
+    }
+
+    TestAssert.Equal(3, sink.WrittenEntries, "All queued messages should still be delivered after backpressure is released.");
 }
 
 static Task MinimumLevelFiltersMessagesAsync()

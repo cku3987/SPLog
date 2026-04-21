@@ -36,7 +36,7 @@ internal sealed class AsyncLogProcessor : IDisposable
             return;
         }
 
-        _channel.Writer.WriteAsync(entry).GetAwaiter().GetResult();
+        WaitForCompletion(_channel.Writer.WriteAsync(entry));
     }
 
     public int DrainDroppedCount()
@@ -123,6 +123,17 @@ internal sealed class AsyncLogProcessor : IDisposable
                 SequenceNumber = Interlocked.Increment(ref _nextSequenceNumber)
             };
         }
+    }
+
+    private static void WaitForCompletion(ValueTask operation)
+    {
+        if (operation.IsCompleted)
+        {
+            operation.GetAwaiter().GetResult();
+            return;
+        }
+
+        operation.AsTask().GetAwaiter().GetResult();
     }
 
     public void Dispose()
