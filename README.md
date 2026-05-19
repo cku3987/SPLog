@@ -149,7 +149,7 @@ Example JSON:
 
 ## File Naming Behavior
 
-- `FilePath = "logs"` creates `<Name>.log` automatically
+- `FilePath = "logs"` creates `<Name>.log` automatically when the first log entry is written
 - Relative paths are resolved from `AppContext.BaseDirectory`
 - Absolute paths are used as-is
 

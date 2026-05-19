@@ -210,7 +210,7 @@ Important behavior:
 
 - `ErrorFile` does not replace the main log. It adds a second file target for error-level entries.
 - To share one error file across multiple loggers, use the same full file path such as `logs/error.log`.
-- If `ErrorFile.FilePath` is a folder path, SPLog creates a file using that logger's `Name`, just like `FilePath`.
+- If `ErrorFile.FilePath` is a folder path, SPLog uses that logger's `Name` for the file name, just like `FilePath`. The file is created when the first matching error entry is written.
 - `MinimumLevel` still applies first. If the main logger is set to `MinimumLevel = Critical`, `Error` messages are filtered before they can reach `ErrorFile`.
 
 ## Logging String Examples
@@ -310,7 +310,7 @@ That means the `options` object you already have is updated to the saved, normal
 
 ## File Path Rules
 
-- If `FilePath` is a folder such as `logs`, SPLog automatically creates `<Name>.log` inside it.
+- If `FilePath` is a folder such as `logs`, SPLog automatically creates `<Name>.log` inside it when the first log entry is written.
 - Relative paths are resolved from the executable folder: `AppContext.BaseDirectory`.
 - Absolute paths such as `D:\Logs\custom.log` are used exactly as given.
 
@@ -349,7 +349,7 @@ Examples with `Name = "Core"` and `FilePath = "logs"`:
 | `IncludeSequenceNumber` | `false` | `true`, `false` | Adds a queue-order number such as `[Q:123]` to each line. This is most useful for long-run tests, concurrency analysis, or debugging log ordering. For normal application logs, the default `false` keeps lines shorter. |
 | `EnableConsole` | `true` | `true`, `false` | Writes logs to the console window. Good during development, testing, or command-line tools. In Windows services or background apps, this may not be useful. |
 | `EnableFile` | `false` | `true`, `false` | Writes logs to files. In most real applications this should be `true`. If both `EnableConsole` and `EnableFile` are `false`, logger creation fails because there is nowhere to write logs. |
-| `FilePath` | `logs` | Folder path or full file path | This is the base log location. If you pass a folder path like `logs`, SPLog creates `<Name>.log` automatically. If you pass a full file path like `D:\Logs\custom.log`, SPLog uses that file name directly. Relative paths use the executable folder as the base. |
+| `FilePath` | `logs` | Folder path or full file path | This is the base log location. If you pass a folder path like `logs`, SPLog creates `<Name>.log` automatically when the first log entry is written. If you pass a full file path like `D:\Logs\custom.log`, SPLog uses that file name directly. Relative paths use the executable folder as the base. |
 | `ErrorFile` | `null` | `null` or `SPLogErrorFileOptions` | Optional extra file target for `Error` and `Critical` entries. When set, matching entries are written to the normal targets and also to the configured error file. Use the same full `ErrorFile.FilePath` on several loggers when you want one shared error log. |
 | `FileConflictMode` | `Append` | `Append`, `CreateNew` | Controls what happens when the current target file already exists. `Append` keeps writing to the existing file. `CreateNew` starts a new distinguishable file by adding a numbered suffix such as `_001`, `_002`. The first file still uses the normal base name, and the numbered suffix starts only when another file for the same period already exists. |
 | `FileRollingMode` | `Daily` | `None`, `Daily`, `Hourly` | Controls time-based file splitting. `None` means no date or time suffix. `Daily` creates one logical file per day using `yyyyMMdd`. `Hourly` creates one logical file per hour using `yyyyMMdd_HH`. If you expect very high log volume, `Hourly` is usually easier to manage. |
@@ -364,7 +364,7 @@ Examples with `Name = "Core"` and `FilePath = "logs"`:
 
 | Option | Default | Choices | Detailed description |
 |---|---:|---|---|
-| `FilePath` | `errors/error.log` | Folder path or full file path | Location of the extra error file. Use a full file path such as `logs/error.log` when multiple loggers should write to the same shared error file. If you pass a folder, SPLog creates `<Name>.log` inside that folder. |
+| `FilePath` | `errors/error.log` | Folder path or full file path | Location of the extra error file. Use a full file path such as `logs/error.log` when multiple loggers should write to the same shared error file. If you pass a folder, SPLog uses `<Name>.log` inside that folder. The file is created when the first matching error entry is written. |
 | `MinimumLevel` | `Error` | `Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical` | Controls which entries are copied to the error file. The usual value is `Error`, which means `Error` and `Critical` are copied. |
 | `UseUtcTimestamp` | `false` | `true`, `false` | Controls timestamp and rolling period for the error file. Use `true` when several machines or regions need one common time standard. |
 | `FileConflictMode` | `Append` | `Append`, `CreateNew` | Same behavior as the main file option, but applied to the error file. |

@@ -8,9 +8,9 @@ internal sealed class FileLogSink : ILogSink
     private readonly string _baseDirectory;
     private readonly string _fileNameWithoutExtension;
     private readonly string _fileExtension;
-    private StreamWriter _writer;
-    private FileStream _stream;
-    private string _currentPeriodKey;
+    private StreamWriter? _writer;
+    private FileStream? _stream;
+    private string _currentPeriodKey = string.Empty;
     private int _currentSequence;
 
     public FileLogSink(SPLogOptions options)
@@ -20,12 +20,6 @@ internal sealed class FileLogSink : ILogSink
         _baseDirectory = Path.GetDirectoryName(fullPath) ?? Directory.GetCurrentDirectory();
         _fileNameWithoutExtension = Path.GetFileNameWithoutExtension(fullPath);
         _fileExtension = Path.GetExtension(fullPath);
-        Directory.CreateDirectory(_baseDirectory);
-
-        _currentPeriodKey = GetPeriodKey(GetNow());
-        _currentSequence = GetInitialSequence(_currentPeriodKey);
-        (_stream, _writer) = OpenWriter(_currentPeriodKey, _currentSequence);
-        CleanupOldFiles();
     }
 
     public async ValueTask WriteBatchAsync(ReadOnlyMemory<LogEntry> entries, CancellationToken cancellationToken)
@@ -33,24 +27,33 @@ internal sealed class FileLogSink : ILogSink
         var batch = entries.ToArray();
         for (var i = 0; i < batch.Length; i++)
         {
-            RotateIfNeeded();
             var line = SPLogFormatter.Format(batch[i], _options);
+            EnsureWriter();
+            RotateIfNeeded();
             cancellationToken.ThrowIfCancellationRequested();
-            await _writer.WriteLineAsync(line).ConfigureAwait(false);
+            await _writer!.WriteLineAsync(line).ConfigureAwait(false);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        await _writer.FlushAsync().ConfigureAwait(false);
+        if (_writer is not null)
+        {
+            await _writer.FlushAsync().ConfigureAwait(false);
+        }
     }
 
     public void Dispose()
     {
-        _writer.Dispose();
-        _stream.Dispose();
+        _writer?.Dispose();
+        _stream?.Dispose();
     }
 
     private void RotateIfNeeded()
     {
+        if (_stream is null)
+        {
+            return;
+        }
+
         var now = GetNow();
         var periodKey = GetPeriodKey(now);
 
@@ -72,11 +75,25 @@ internal sealed class FileLogSink : ILogSink
 
     private void SwitchWriter(string periodKey, int sequence)
     {
-        _writer.Dispose();
-        _stream.Dispose();
+        _writer?.Dispose();
+        _stream?.Dispose();
         _currentPeriodKey = periodKey;
         _currentSequence = sequence;
         (_stream, _writer) = OpenWriter(periodKey, sequence);
+    }
+
+    private void EnsureWriter()
+    {
+        if (_writer is not null)
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(_baseDirectory);
+        _currentPeriodKey = GetPeriodKey(GetNow());
+        _currentSequence = GetInitialSequence(_currentPeriodKey);
+        (_stream, _writer) = OpenWriter(_currentPeriodKey, _currentSequence);
+        CleanupOldFiles();
     }
 
     private (FileStream Stream, StreamWriter Writer) OpenWriter(string periodKey, int sequence)

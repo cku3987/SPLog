@@ -210,7 +210,7 @@ moduleBLog.Error("module B failed");
 
 - `ErrorFile`은 메인 로그를 대체하지 않습니다. 에러 레벨 로그를 추가 파일에도 한 번 더 쓰는 기능입니다.
 - 여러 로거가 하나의 에러 파일을 공유하려면 `logs/error.log`처럼 같은 전체 파일 경로를 지정하세요.
-- `ErrorFile.FilePath`에 폴더만 주면 일반 `FilePath`처럼 해당 로거의 `Name`으로 파일을 만듭니다.
+- `ErrorFile.FilePath`에 폴더만 주면 일반 `FilePath`처럼 해당 로거의 `Name`으로 파일명을 정합니다. 실제 파일은 조건에 맞는 첫 에러 로그가 기록될 때 생성됩니다.
 - `MinimumLevel`은 먼저 적용됩니다. 메인 로거가 `MinimumLevel = Critical`이면 `Error` 로그는 `ErrorFile`까지 가지 못하고 필터링됩니다.
 
 ## 로깅 문자열 사용 예시
@@ -310,7 +310,7 @@ using var logger = SPLogFactory.Create(options);
 
 ## 파일 경로 규칙
 
-- `FilePath`에 `logs`처럼 폴더만 주면 SPLog가 자동으로 `<Name>.log` 파일을 그 안에 만듭니다.
+- `FilePath`에 `logs`처럼 폴더만 주면 SPLog가 첫 로그를 실제로 기록할 때 `<Name>.log` 파일을 그 안에 만듭니다.
 - 상대 경로는 exe 폴더인 `AppContext.BaseDirectory` 기준으로 해석됩니다.
 - `D:\Logs\custom.log` 같은 절대 경로를 주면 그 위치와 파일명을 그대로 사용합니다.
 
@@ -339,7 +339,7 @@ using var logger = SPLogFactory.Create(options);
 | `IncludeSequenceNumber` | `false` | `true`, `false` | 로그 한 줄에 `[Q:123]` 같은 큐 순서 번호를 같이 찍습니다. 이 값은 롱런 테스트, 동시성 분석, 로그 순서 디버깅에 특히 유용합니다. 일반적인 애플리케이션 로그에서는 줄이 길어질 수 있으므로 기본값은 `false`입니다. |
 | `EnableConsole` | `true` | `true`, `false` | 콘솔 창에도 로그를 출력할지 정합니다. 개발 중, 테스트 중, 콘솔 앱에서는 유용합니다. 서비스나 백그라운드 앱에서는 파일만 쓰는 경우가 많습니다. |
 | `EnableFile` | `false` | `true`, `false` | 파일로 로그를 남길지 정합니다. 실제 프로그램에서는 대부분 `true`로 사용합니다. `EnableConsole`과 `EnableFile`이 둘 다 `false`면 기록할 곳이 없으므로 로거 생성이 실패합니다. |
-| `FilePath` | `logs` | 폴더 경로 또는 전체 파일 경로 | 기본 로그 위치입니다. `logs`처럼 폴더 경로만 주면 SPLog가 `<Name>.log`를 자동 생성합니다. `D:\Logs\custom.log`처럼 파일명까지 주면 그 이름을 그대로 사용합니다. 상대 경로는 exe 폴더 기준입니다. |
+| `FilePath` | `logs` | 폴더 경로 또는 전체 파일 경로 | 기본 로그 위치입니다. `logs`처럼 폴더 경로만 주면 SPLog가 첫 로그를 실제로 기록할 때 `<Name>.log`를 자동 생성합니다. `D:\Logs\custom.log`처럼 파일명까지 주면 그 이름을 그대로 사용합니다. 상대 경로는 exe 폴더 기준입니다. |
 | `ErrorFile` | `null` | `null` 또는 `SPLogErrorFileOptions` | `Error`와 `Critical` 로그를 추가 파일에도 같이 남기는 옵션입니다. 설정하면 일반 로그 대상에도 기록되고, 조건에 맞는 로그는 에러 파일에도 한 번 더 기록됩니다. 여러 로거가 하나의 에러 로그를 공유하려면 같은 전체 `ErrorFile.FilePath`를 쓰면 됩니다. |
 | `FileRollingMode` | `Daily` | `None`, `Daily`, `Hourly` | 시간 기준 파일 분리 방식입니다. `None`은 날짜나 시간 suffix 없이 한 이름으로만 갑니다. `Daily`는 `yyyyMMdd` 기준으로 하루마다 나눕니다. `Hourly`는 `yyyyMMdd_HH` 기준으로 한 시간마다 나눕니다. 로그 양이 많으면 `Hourly`가 관리하기 쉽습니다. |
 | `MaxFileSizeBytes` | `10485760` | 0보다 큰 정수 | 파일 하나가 이 크기에 도달하면 다음 번호 파일로 넘어갑니다. 기본값은 10MB입니다. 값을 크게 하면 파일 수는 줄지만 파일 하나가 무거워지고, 작게 하면 파일 수는 늘지만 업로드나 확인은 쉬워집니다. |
@@ -353,7 +353,7 @@ using var logger = SPLogFactory.Create(options);
 
 | 옵션 | 기본값 | 선택지 | 자세한 설명 |
 |---|---:|---|---|
-| `FilePath` | `errors/error.log` | 폴더 경로 또는 전체 파일 경로 | 추가 에러 파일 위치입니다. 여러 로거가 하나의 공용 에러 파일에 쓰게 하려면 `logs/error.log`처럼 파일명까지 포함한 같은 경로를 지정하세요. 폴더만 주면 해당 로거의 `Name`으로 파일을 만듭니다. |
+| `FilePath` | `errors/error.log` | 폴더 경로 또는 전체 파일 경로 | 추가 에러 파일 위치입니다. 여러 로거가 하나의 공용 에러 파일에 쓰게 하려면 `logs/error.log`처럼 파일명까지 포함한 같은 경로를 지정하세요. 폴더만 주면 해당 로거의 `Name`으로 파일명을 정합니다. 실제 파일은 조건에 맞는 첫 에러 로그가 기록될 때 생성됩니다. |
 | `MinimumLevel` | `Error` | `Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical` | 어떤 레벨부터 에러 파일에 복사할지 정합니다. 보통은 `Error`를 쓰며, 이 경우 `Error`와 `Critical`이 복사됩니다. |
 | `UseUtcTimestamp` | `false` | `true`, `false` | 에러 파일의 타임스탬프와 rolling 기간 계산 기준입니다. 여러 장비나 여러 지역 로그를 같이 봐야 하면 `true`가 편합니다. |
 | `FileConflictMode` | `Append` | `Append`, `CreateNew` | 메인 파일과 같은 방식이지만 에러 파일에 적용됩니다. |

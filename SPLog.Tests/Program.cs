@@ -6,7 +6,9 @@ var tests = new (string Name, Func<Task> Execute)[]
 {
     ("Dispose flushes queued messages", DisposeFlushesQueuedMessagesAsync),
     ("BatchSize does not wait for a full batch", BatchSizeDoesNotWaitForFullBatchAsync),
+    ("File target is created only after the first written entry", FileTargetIsCreatedOnlyAfterFirstWrittenEntryAsync),
     ("Queue backpressure waits instead of throwing", QueueBackpressureWaitsInsteadOfThrowingAsync),
+    ("Error file target is created only after a matching error entry", ErrorFileTargetIsCreatedOnlyAfterMatchingErrorEntryAsync),
     ("Error file receives only error-level entries and still keeps main logs", ErrorFileReceivesOnlyErrorLevelEntriesAsync),
     ("Multiple loggers can share one error file", MultipleLoggersCanShareOneErrorFileAsync),
     ("MinimumLevel filters lower levels", MinimumLevelFiltersMessagesAsync),
@@ -92,6 +94,40 @@ static async Task BatchSizeDoesNotWaitForFullBatchAsync()
     TestAssert.Equal(3, TestHelpers.CountMessageLines(logDirectory, "BATCH|"), "SPLog should write a partial batch without waiting for all 10 entries.");
 }
 
+static Task FileTargetIsCreatedOnlyAfterFirstWrittenEntryAsync()
+{
+    using var scope = new TestScope();
+    var logDirectory = Path.Combine(scope.RootDirectory, "lazy-main");
+
+    using (SPLogFactory.Create(options =>
+           {
+               options.Name = "LazyMain";
+               options.EnableConsole = false;
+               options.EnableFile = true;
+               options.FilePath = logDirectory;
+               options.FileRollingMode = FileRollingMode.None;
+           }))
+    {
+    }
+
+    TestAssert.False(Directory.Exists(logDirectory), "Creating and disposing a logger without writing should not create the log directory.");
+
+    using (var logger = SPLogFactory.Create(options =>
+           {
+               options.Name = "LazyMain";
+               options.EnableConsole = false;
+               options.EnableFile = true;
+               options.FilePath = logDirectory;
+               options.FileRollingMode = FileRollingMode.None;
+           }))
+    {
+        logger.Information("LAZYMAIN|1");
+    }
+
+    TestAssert.True(File.Exists(Path.Combine(logDirectory, "LazyMain.log")), "The main log file should be created when the first entry is written.");
+    return Task.CompletedTask;
+}
+
 static async Task QueueBackpressureWaitsInsteadOfThrowingAsync()
 {
     using var sink = new BlockingLogSink();
@@ -124,6 +160,73 @@ static async Task QueueBackpressureWaitsInsteadOfThrowingAsync()
     }
 
     TestAssert.Equal(3, sink.WrittenEntries, "All queued messages should still be delivered after backpressure is released.");
+}
+
+static Task ErrorFileTargetIsCreatedOnlyAfterMatchingErrorEntryAsync()
+{
+    using var scope = new TestScope();
+    var mainDirectory = scope.CreateSubdirectory("main");
+    var sharedErrorPath = Path.Combine(scope.RootDirectory, "errors", "lazy-error.log");
+
+    using (SPLogFactory.Create(options =>
+           {
+               options.Name = "LazyError";
+               options.EnableConsole = false;
+               options.EnableFile = true;
+               options.FilePath = mainDirectory;
+               options.FileRollingMode = FileRollingMode.None;
+               options.ErrorFile = new SPLogErrorFileOptions
+               {
+                   FilePath = sharedErrorPath,
+                   MinimumLevel = LogLevel.Error,
+                   FileRollingMode = FileRollingMode.None
+               };
+           }))
+    {
+    }
+
+    TestAssert.False(File.Exists(sharedErrorPath), "Creating and disposing a logger without writing should not create the shared error file.");
+
+    using (var logger = SPLogFactory.Create(options =>
+           {
+               options.Name = "LazyError";
+               options.EnableConsole = false;
+               options.EnableFile = true;
+               options.FilePath = mainDirectory;
+               options.FileRollingMode = FileRollingMode.None;
+               options.ErrorFile = new SPLogErrorFileOptions
+               {
+                   FilePath = sharedErrorPath,
+                   MinimumLevel = LogLevel.Error,
+                   FileRollingMode = FileRollingMode.None
+               };
+           }))
+    {
+        logger.Information("LAZYERROR|INFO");
+    }
+
+    TestAssert.False(File.Exists(sharedErrorPath), "Information entries should not create the shared error file.");
+
+    using (var logger = SPLogFactory.Create(options =>
+           {
+               options.Name = "LazyError";
+               options.EnableConsole = false;
+               options.EnableFile = true;
+               options.FilePath = mainDirectory;
+               options.FileRollingMode = FileRollingMode.None;
+               options.ErrorFile = new SPLogErrorFileOptions
+               {
+                   FilePath = sharedErrorPath,
+                   MinimumLevel = LogLevel.Error,
+                   FileRollingMode = FileRollingMode.None
+               };
+           }))
+    {
+        logger.Error("LAZYERROR|ERROR");
+    }
+
+    TestAssert.True(File.Exists(sharedErrorPath), "The shared error file should be created when the first matching error entry is written.");
+    return Task.CompletedTask;
 }
 
 static Task ErrorFileReceivesOnlyErrorLevelEntriesAsync()
@@ -263,22 +366,23 @@ static Task CategoryLoggersShareWriterAsync()
     using var scope = new TestScope();
     var logDirectory = scope.CreateSubdirectory("logs");
 
-    using var rootLogger = SPLogFactory.Create(options =>
+    using (var rootLogger = SPLogFactory.Create(options =>
     {
         options.Name = "App";
         options.EnableConsole = false;
         options.EnableFile = true;
         options.FilePath = logDirectory;
         options.FileRollingMode = FileRollingMode.None;
-    });
+    }))
+    {
+        var networkLogger = rootLogger.CreateCategory("Network");
+        var socketLogger = networkLogger.CreateCategory("Socket");
 
-    var networkLogger = rootLogger.CreateCategory("Network");
-    var socketLogger = networkLogger.CreateCategory("Socket");
-
-    networkLogger.Information("CAT|NETWORK");
-    socketLogger.Warning("CAT|SOCKET");
-    networkLogger.Dispose();
-    rootLogger.Information("CAT|ROOT");
+        networkLogger.Information("CAT|NETWORK");
+        socketLogger.Warning("CAT|SOCKET");
+        networkLogger.Dispose();
+        rootLogger.Information("CAT|ROOT");
+    }
 
     var files = TestHelpers.GetLogFiles(logDirectory);
     TestAssert.Equal(1, files.Length, "Category loggers should share the same underlying file writer.");

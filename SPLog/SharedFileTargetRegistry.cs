@@ -143,9 +143,9 @@ internal sealed class SharedFileTarget : IDisposable
     private readonly string _fileNameWithoutExtension;
     private readonly string _fileExtension;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private StreamWriter _writer;
-    private FileStream _stream;
-    private string _currentPeriodKey;
+    private StreamWriter? _writer;
+    private FileStream? _stream;
+    private string _currentPeriodKey = string.Empty;
     private int _currentSequence;
     private int _disposed;
 
@@ -155,12 +155,6 @@ internal sealed class SharedFileTarget : IDisposable
         _baseDirectory = Path.GetDirectoryName(options.ResolvedBaseFilePath) ?? Directory.GetCurrentDirectory();
         _fileNameWithoutExtension = Path.GetFileNameWithoutExtension(options.ResolvedBaseFilePath);
         _fileExtension = Path.GetExtension(options.ResolvedBaseFilePath);
-        Directory.CreateDirectory(_baseDirectory);
-
-        _currentPeriodKey = GetPeriodKey(GetNow());
-        _currentSequence = GetInitialSequence(_currentPeriodKey);
-        (_stream, _writer) = OpenWriter(_currentPeriodKey, _currentSequence);
-        CleanupOldFiles();
     }
 
     public async ValueTask WriteBatchAsync(string[] lines, CancellationToken cancellationToken)
@@ -173,13 +167,17 @@ internal sealed class SharedFileTarget : IDisposable
 
             for (var i = 0; i < lines.Length; i++)
             {
+                EnsureWriter();
                 RotateIfNeeded();
                 cancellationToken.ThrowIfCancellationRequested();
-                await _writer.WriteLineAsync(lines[i]).ConfigureAwait(false);
+                await _writer!.WriteLineAsync(lines[i]).ConfigureAwait(false);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            await _writer.FlushAsync().ConfigureAwait(false);
+            if (_writer is not null)
+            {
+                await _writer.FlushAsync().ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -197,8 +195,8 @@ internal sealed class SharedFileTarget : IDisposable
         _gate.Wait();
         try
         {
-            _writer.Dispose();
-            _stream.Dispose();
+            _writer?.Dispose();
+            _stream?.Dispose();
         }
         finally
         {
@@ -209,6 +207,11 @@ internal sealed class SharedFileTarget : IDisposable
 
     private void RotateIfNeeded()
     {
+        if (_stream is null)
+        {
+            return;
+        }
+
         var now = GetNow();
         var periodKey = GetPeriodKey(now);
 
@@ -230,11 +233,25 @@ internal sealed class SharedFileTarget : IDisposable
 
     private void SwitchWriter(string periodKey, int sequence)
     {
-        _writer.Dispose();
-        _stream.Dispose();
+        _writer?.Dispose();
+        _stream?.Dispose();
         _currentPeriodKey = periodKey;
         _currentSequence = sequence;
         (_stream, _writer) = OpenWriter(periodKey, sequence);
+    }
+
+    private void EnsureWriter()
+    {
+        if (_writer is not null)
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(_baseDirectory);
+        _currentPeriodKey = GetPeriodKey(GetNow());
+        _currentSequence = GetInitialSequence(_currentPeriodKey);
+        (_stream, _writer) = OpenWriter(_currentPeriodKey, _currentSequence);
+        CleanupOldFiles();
     }
 
     private (FileStream Stream, StreamWriter Writer) OpenWriter(string periodKey, int sequence)

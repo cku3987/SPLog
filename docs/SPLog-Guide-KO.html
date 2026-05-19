@@ -182,7 +182,7 @@ moduleBLog.Error(<span class="str">"module B failed"</span>);</code></pre>
   <ul>
     <li><code>ErrorFile</code>은 메인 로그를 대체하지 않습니다. 에러 레벨 로그를 추가 파일에도 한 번 더 쓰는 기능입니다.</li>
     <li>여러 로거가 하나의 에러 파일을 공유하려면 <code>logs/error.log</code>처럼 같은 전체 파일 경로를 지정하세요.</li>
-    <li><code>ErrorFile.FilePath</code>에 폴더만 주면 일반 <code>FilePath</code>처럼 해당 로거의 <code>Name</code>으로 파일을 만듭니다.</li>
+    <li><code>ErrorFile.FilePath</code>에 폴더만 주면 일반 <code>FilePath</code>처럼 해당 로거의 <code>Name</code>으로 파일명을 정합니다. 실제 파일은 조건에 맞는 첫 에러 로그가 기록될 때 생성됩니다.</li>
     <li><code>MinimumLevel</code>은 먼저 적용됩니다. 메인 로거가 <code>MinimumLevel = Critical</code>이면 <code>Error</code> 로그는 <code>ErrorFile</code>까지 가지 못하고 필터링됩니다.</li>
   </ul>
 
@@ -248,7 +248,7 @@ SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.c
     <tr><td><code>IncludeSequenceNumber</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>로그 한 줄에 <code>[Q:123]</code> 같은 큐 순서 번호를 같이 찍습니다. 이 값은 롱런 테스트, 동시성 분석, 로그 순서 디버깅에 특히 유용합니다. 일반적인 애플리케이션 로그에서는 줄이 길어질 수 있으므로 기본값은 <code>false</code>입니다.</td></tr>
     <tr><td><code>EnableConsole</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>콘솔 창에도 로그를 출력합니다. 개발 중이나 테스트 중에 유용합니다.</td></tr>
     <tr><td><code>EnableFile</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>파일로 로그를 남깁니다. 실제 프로그램에서는 대부분 켭니다.</td></tr>
-    <tr><td><code>FilePath</code></td><td><code>logs</code></td><td>폴더 경로 또는 전체 파일 경로</td><td><code>logs</code>처럼 폴더만 주면 SPLog가 <code>&lt;Name&gt;.log</code>를 자동 생성합니다. 상대 경로는 exe 폴더 기준이고, 절대 경로는 그대로 사용합니다.</td></tr>
+    <tr><td><code>FilePath</code></td><td><code>logs</code></td><td>폴더 경로 또는 전체 파일 경로</td><td><code>logs</code>처럼 폴더만 주면 SPLog가 첫 로그를 실제로 기록할 때 <code>&lt;Name&gt;.log</code>를 자동 생성합니다. 상대 경로는 exe 폴더 기준이고, 절대 경로는 그대로 사용합니다.</td></tr>
     <tr><td><code>ErrorFile</code></td><td><code>null</code></td><td><code>null</code> 또는 <code>SPLogErrorFileOptions</code></td><td><code>Error</code>와 <code>Critical</code> 로그를 추가 파일에도 같이 남기는 옵션입니다. 조건에 맞는 로그는 일반 출력 대상에도 기록되고, 에러 파일에도 한 번 더 기록됩니다. 여러 로거가 하나의 에러 로그를 공유하려면 같은 전체 <code>ErrorFile.FilePath</code>를 쓰면 됩니다.</td></tr>
     <tr><td><code>FileRollingMode</code></td><td><code>Daily</code></td><td><code>None</code>, <code>Daily</code>, <code>Hourly</code></td><td><code>None</code>은 날짜나 시간 suffix 없이 사용합니다. <code>Daily</code>는 하루마다, <code>Hourly</code>는 한 시간마다 파일을 나눕니다. 로그 양이 많으면 <code>Hourly</code>가 관리하기 쉽습니다.</td></tr>
     <tr><td><code>MaxFileSizeBytes</code></td><td><code>10485760</code> (10 MB)</td><td>0보다 큰 정수</td><td>이 크기에 도달하면 다음 번호 파일로 넘어갑니다. 크게 하면 파일 수는 줄고, 작게 하면 파일 관리가 쉬워집니다.</td></tr>
@@ -261,7 +261,7 @@ SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.c
   <h2>SPLogErrorFileOptions</h2>
   <table>
     <tr><th>옵션</th><th>기본값</th><th>선택지</th><th>자세한 설명</th></tr>
-    <tr><td><code>FilePath</code></td><td><code>errors/error.log</code></td><td>폴더 경로 또는 전체 파일 경로</td><td>추가 에러 파일 위치입니다. 여러 로거가 하나의 공용 에러 파일에 쓰게 하려면 <code>logs/error.log</code>처럼 파일명까지 포함한 같은 경로를 지정하세요. 폴더만 주면 해당 로거의 <code>Name</code>으로 파일을 만듭니다.</td></tr>
+    <tr><td><code>FilePath</code></td><td><code>errors/error.log</code></td><td>폴더 경로 또는 전체 파일 경로</td><td>추가 에러 파일 위치입니다. 여러 로거가 하나의 공용 에러 파일에 쓰게 하려면 <code>logs/error.log</code>처럼 파일명까지 포함한 같은 경로를 지정하세요. 폴더만 주면 해당 로거의 <code>Name</code>으로 파일명을 정합니다. 실제 파일은 조건에 맞는 첫 에러 로그가 기록될 때 생성됩니다.</td></tr>
     <tr><td><code>MinimumLevel</code></td><td><code>Error</code></td><td><code>Trace</code>, <code>Debug</code>, <code>Information</code>, <code>Warning</code>, <code>Error</code>, <code>Critical</code></td><td>어떤 레벨부터 에러 파일에 복사할지 정합니다. 보통은 <code>Error</code>를 쓰며, 이 경우 <code>Error</code>와 <code>Critical</code>이 복사됩니다.</td></tr>
     <tr><td><code>UseUtcTimestamp</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>에러 파일의 타임스탬프와 rolling 기간 계산 기준입니다. 여러 장비나 여러 지역 로그를 같이 봐야 하면 <code>true</code>가 편합니다.</td></tr>
     <tr><td><code>FileConflictMode</code></td><td><code>Append</code></td><td><code>Append</code>, <code>CreateNew</code></td><td>메인 파일과 같은 방식이지만 에러 파일에 적용됩니다.</td></tr>
