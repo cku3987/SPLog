@@ -140,7 +140,50 @@
   <ul>
     <li>To the same console output, if console logging is enabled</li>
     <li>To the same file output, if file logging is enabled</li>
-    <li>In short, exception logs use the same logger targets as normal logs</li>
+    <li>To the shared error file too, if <code>ErrorFile</code> is configured and the level is <code>Error</code> or <code>Critical</code></li>
+    <li>Without <code>ErrorFile</code>, exception logs use the same logger targets as normal logs</li>
+  </ul>
+
+  <h2>Shared Error File</h2>
+  <p>Use <code>ErrorFile</code> when each logger should keep its own normal log, but all failures should also be gathered into one common error file.</p>
+  <pre><code><span class="kw">var</span> sharedErrorFile = <span class="kw">new</span> SPLogErrorFileOptions
+{
+    FilePath = <span class="str">"logs/error.log"</span>,
+    MinimumLevel = LogLevel.Error,
+    FileRollingMode = FileRollingMode.Daily
+};
+
+<span class="kw">using</span> <span class="kw">var</span> moduleALog = SPLogFactory.Create(options =&gt;
+{
+    options.Name = <span class="str">"ModuleA"</span>;
+    options.EnableFile = <span class="kw">true</span>;
+    options.FilePath = <span class="str">"logs/module-a"</span>;
+    options.ErrorFile = sharedErrorFile;
+});
+
+<span class="kw">using</span> <span class="kw">var</span> moduleBLog = SPLogFactory.Create(options =&gt;
+{
+    options.Name = <span class="str">"ModuleB"</span>;
+    options.EnableFile = <span class="kw">true</span>;
+    options.FilePath = <span class="str">"logs/module-b"</span>;
+    options.ErrorFile = sharedErrorFile;
+});
+
+moduleALog.Information(<span class="str">"module A started"</span>);
+moduleALog.Error(<span class="str">"module A failed"</span>);
+moduleBLog.Error(<span class="str">"module B failed"</span>);</code></pre>
+  <p>Result:</p>
+  <ul>
+    <li>ModuleA writes normal logs and errors to its own main log.</li>
+    <li>ModuleB writes normal logs and errors to its own main log.</li>
+    <li>Both <code>Error</code> and <code>Critical</code> entries are also written to <code>logs/error.log</code>.</li>
+  </ul>
+  <p>Important behavior:</p>
+  <ul>
+    <li><code>ErrorFile</code> does not replace the main log. It adds a second file target for error-level entries.</li>
+    <li>To share one error file across multiple loggers, use the same full file path such as <code>logs/error.log</code>.</li>
+    <li>If <code>ErrorFile.FilePath</code> is a folder path, SPLog creates a file using that logger's <code>Name</code>, just like <code>FilePath</code>.</li>
+    <li><code>MinimumLevel</code> still applies first. If the main logger is set to <code>MinimumLevel = Critical</code>, <code>Error</code> messages are filtered before they can reach <code>ErrorFile</code>.</li>
   </ul>
 
   <h2>Logging String Examples</h2>
@@ -206,6 +249,7 @@ SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.c
     <tr><td><code>EnableConsole</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>Writes to the console window. Useful during development and testing.</td></tr>
     <tr><td><code>EnableFile</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>Writes to files. Usually enabled in real applications.</td></tr>
     <tr><td><code>FilePath</code></td><td><code>logs</code></td><td>Folder path or full file path</td><td>If you pass a folder like <code>logs</code>, SPLog creates <code>&lt;Name&gt;.log</code> automatically. Relative paths use the executable folder. Absolute paths are used as-is.</td></tr>
+    <tr><td><code>ErrorFile</code></td><td><code>null</code></td><td><code>null</code> or <code>SPLogErrorFileOptions</code></td><td>Optional extra file target for <code>Error</code> and <code>Critical</code> entries. Matching entries are written to normal targets and also to the configured error file. Use the same full <code>ErrorFile.FilePath</code> on several loggers when you want one shared error log.</td></tr>
     <tr><td><code>FileConflictMode</code></td><td><code>Append</code></td><td><code>Append</code>, <code>CreateNew</code></td><td>Controls what happens when the current target file already exists. <code>Append</code> keeps writing to the existing file. <code>CreateNew</code> starts a new distinguishable file by adding a numbered suffix such as <code>_001</code>, <code>_002</code>. The first file still uses the normal base name, and the numbered suffix starts only when another file for the same period already exists.</td></tr>
     <tr><td><code>FileRollingMode</code></td><td><code>Daily</code></td><td><code>None</code>, <code>Daily</code>, <code>Hourly</code></td><td><code>None</code> means no time suffix. <code>Daily</code> splits files by day using <code>yyyyMMdd</code>. <code>Hourly</code> splits by hour using <code>yyyyMMdd_HH</code>. High-volume applications often benefit from <code>Hourly</code>.</td></tr>
     <tr><td><code>MaxFileSizeBytes</code></td><td><code>10485760</code> (10 MB)</td><td>Any positive integer</td><td>Maximum size before SPLog rolls to the next numbered file. Bigger values create fewer files. Smaller values are easier to inspect and move.</td></tr>
@@ -214,6 +258,19 @@ SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.c
     <tr><td><code>BatchSize</code></td><td><code>10</code></td><td>Any positive integer</td><td>Maximum number of log entries written together in one background batch. The default <code>10</code> is a practical balance for normal use. SPLog does not wait until all 10 entries exist; if fewer entries are available, it writes the smaller batch. Larger values often improve performance.</td></tr>
     <tr><td><code>FlushIntervalMs</code></td><td><code>100</code></td><td>Any positive integer</td><td>Background flush interval in milliseconds. Smaller values flush sooner but increase I/O frequency. Larger values reduce I/O but delay file output slightly.</td></tr>
     <tr><td><code>FileBufferSize</code></td><td><code>65536</code></td><td><code>1024</code> or larger</td><td>Buffer size used by file writing. The default is already suitable for most cases.</td></tr>
+  </table>
+
+  <h2>SPLogErrorFileOptions</h2>
+  <table>
+    <tr><th>Option</th><th>Default</th><th>Choices</th><th>Detailed description</th></tr>
+    <tr><td><code>FilePath</code></td><td><code>errors/error.log</code></td><td>Folder path or full file path</td><td>Location of the extra error file. Use a full file path such as <code>logs/error.log</code> when multiple loggers should write to the same shared error file. If you pass a folder, SPLog creates <code>&lt;Name&gt;.log</code> inside that folder.</td></tr>
+    <tr><td><code>MinimumLevel</code></td><td><code>Error</code></td><td><code>Trace</code>, <code>Debug</code>, <code>Information</code>, <code>Warning</code>, <code>Error</code>, <code>Critical</code></td><td>Controls which entries are copied to the error file. The usual value is <code>Error</code>, which means <code>Error</code> and <code>Critical</code> are copied.</td></tr>
+    <tr><td><code>UseUtcTimestamp</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>Controls timestamp and rolling period for the error file. Use <code>true</code> when several machines or regions need one common time standard.</td></tr>
+    <tr><td><code>FileConflictMode</code></td><td><code>Append</code></td><td><code>Append</code>, <code>CreateNew</code></td><td>Same behavior as the main file option, but applied to the error file.</td></tr>
+    <tr><td><code>FileRollingMode</code></td><td><code>Daily</code></td><td><code>None</code>, <code>Daily</code>, <code>Hourly</code></td><td>Same rolling choices as the main file option, but applied to the error file.</td></tr>
+    <tr><td><code>MaxFileSizeBytes</code></td><td><code>10485760</code></td><td>Any positive integer</td><td>Maximum error file size before size rolling creates the next numbered file.</td></tr>
+    <tr><td><code>MaxRollingFiles</code></td><td><code>14</code></td><td>Any positive integer</td><td>Number of recent error log files to keep. Older files are deleted automatically.</td></tr>
+    <tr><td><code>FileBufferSize</code></td><td><code>65536</code></td><td><code>1024</code> or larger</td><td>Buffer size used by the shared error file writer.</td></tr>
   </table>
 
   <h2>Rolling Behavior</h2>

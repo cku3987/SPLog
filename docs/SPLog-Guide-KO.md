@@ -158,13 +158,60 @@ catch (Exception ex)
 
 - 콘솔 로깅이 켜져 있으면 같은 콘솔 출력으로 기록됩니다.
 - 파일 로깅이 켜져 있으면 같은 로그 파일로 기록됩니다.
-- 즉, 예외 로그는 일반 로그와 같은 출력 대상으로 나갑니다.
+- `ErrorFile`이 설정되어 있고 레벨이 `Error` 또는 `Critical`이면 공용 에러 파일에도 같이 기록됩니다.
+- `ErrorFile`이 없으면 예외 로그는 일반 로그와 같은 출력 대상으로만 나갑니다.
 
 권장 예외 메서드:
 
 - `logger.Warning(ex, "...")`
 - `logger.Error(ex, "...")`
 - `logger.Critical(ex, "...")`
+
+## 공용 에러 파일
+
+각 로거는 자기 메인 로그를 따로 남기고, 실패 로그만 하나의 공용 에러 파일에도 같이 모으고 싶을 때 `ErrorFile`을 씁니다.
+
+```csharp
+var sharedErrorFile = new SPLogErrorFileOptions
+{
+    FilePath = "logs/error.log",
+    MinimumLevel = LogLevel.Error,
+    FileRollingMode = FileRollingMode.Daily
+};
+
+using var moduleALog = SPLogFactory.Create(options =>
+{
+    options.Name = "ModuleA";
+    options.EnableFile = true;
+    options.FilePath = "logs/module-a";
+    options.ErrorFile = sharedErrorFile;
+});
+
+using var moduleBLog = SPLogFactory.Create(options =>
+{
+    options.Name = "ModuleB";
+    options.EnableFile = true;
+    options.FilePath = "logs/module-b";
+    options.ErrorFile = sharedErrorFile;
+});
+
+moduleALog.Information("module A started");
+moduleALog.Error("module A failed");
+moduleBLog.Error("module B failed");
+```
+
+결과:
+
+- ModuleA는 자기 메인 로그에 일반 로그와 에러를 모두 남깁니다.
+- ModuleB도 자기 메인 로그에 일반 로그와 에러를 모두 남깁니다.
+- `Error`와 `Critical` 로그는 `logs/error.log`에도 같이 모입니다.
+
+주의할 점:
+
+- `ErrorFile`은 메인 로그를 대체하지 않습니다. 에러 레벨 로그를 추가 파일에도 한 번 더 쓰는 기능입니다.
+- 여러 로거가 하나의 에러 파일을 공유하려면 `logs/error.log`처럼 같은 전체 파일 경로를 지정하세요.
+- `ErrorFile.FilePath`에 폴더만 주면 일반 `FilePath`처럼 해당 로거의 `Name`으로 파일을 만듭니다.
+- `MinimumLevel`은 먼저 적용됩니다. 메인 로거가 `MinimumLevel = Critical`이면 `Error` 로그는 `ErrorFile`까지 가지 못하고 필터링됩니다.
 
 ## 로깅 문자열 사용 예시
 
@@ -293,6 +340,7 @@ using var logger = SPLogFactory.Create(options);
 | `EnableConsole` | `true` | `true`, `false` | 콘솔 창에도 로그를 출력할지 정합니다. 개발 중, 테스트 중, 콘솔 앱에서는 유용합니다. 서비스나 백그라운드 앱에서는 파일만 쓰는 경우가 많습니다. |
 | `EnableFile` | `false` | `true`, `false` | 파일로 로그를 남길지 정합니다. 실제 프로그램에서는 대부분 `true`로 사용합니다. `EnableConsole`과 `EnableFile`이 둘 다 `false`면 기록할 곳이 없으므로 로거 생성이 실패합니다. |
 | `FilePath` | `logs` | 폴더 경로 또는 전체 파일 경로 | 기본 로그 위치입니다. `logs`처럼 폴더 경로만 주면 SPLog가 `<Name>.log`를 자동 생성합니다. `D:\Logs\custom.log`처럼 파일명까지 주면 그 이름을 그대로 사용합니다. 상대 경로는 exe 폴더 기준입니다. |
+| `ErrorFile` | `null` | `null` 또는 `SPLogErrorFileOptions` | `Error`와 `Critical` 로그를 추가 파일에도 같이 남기는 옵션입니다. 설정하면 일반 로그 대상에도 기록되고, 조건에 맞는 로그는 에러 파일에도 한 번 더 기록됩니다. 여러 로거가 하나의 에러 로그를 공유하려면 같은 전체 `ErrorFile.FilePath`를 쓰면 됩니다. |
 | `FileRollingMode` | `Daily` | `None`, `Daily`, `Hourly` | 시간 기준 파일 분리 방식입니다. `None`은 날짜나 시간 suffix 없이 한 이름으로만 갑니다. `Daily`는 `yyyyMMdd` 기준으로 하루마다 나눕니다. `Hourly`는 `yyyyMMdd_HH` 기준으로 한 시간마다 나눕니다. 로그 양이 많으면 `Hourly`가 관리하기 쉽습니다. |
 | `MaxFileSizeBytes` | `10485760` | 0보다 큰 정수 | 파일 하나가 이 크기에 도달하면 다음 번호 파일로 넘어갑니다. 기본값은 10MB입니다. 값을 크게 하면 파일 수는 줄지만 파일 하나가 무거워지고, 작게 하면 파일 수는 늘지만 업로드나 확인은 쉬워집니다. |
 | `MaxRollingFiles` | `14` | 0보다 큰 정수 | 최신 rolling 파일을 몇 개까지 보관할지 정합니다. 오래된 파일은 자동 삭제됩니다. 디스크 공간이 넉넉하면 늘리고, 디스크를 아껴야 하면 줄이면 됩니다. |
@@ -300,6 +348,19 @@ using var logger = SPLogFactory.Create(options);
 | `BatchSize` | `10` | 0보다 큰 정수 | 한 번에 묶어서 처리할 최대 로그 개수입니다. 기본값 `10`은 일반적인 사용에서 속도와 단순함의 균형이 괜찮은 값입니다. SPLog는 10개가 다 찰 때까지 무조건 기다리지 않고, 지금 들어와 있는 개수만큼 먼저 기록할 수 있습니다. 값을 키우면 보통 파일 쓰기 성능이 좋아집니다. |
 | `FlushIntervalMs` | `100` | 0보다 큰 정수 | 백그라운드 쓰기 주기입니다. `100`이면 대략 0.1초마다 파일로 밀어냅니다. 값을 작게 하면 더 빨리 디스크에 반영되지만 I/O가 늘고, 크게 하면 성능은 좋아질 수 있지만 파일 반영은 조금 늦어집니다. |
 | `FileBufferSize` | `65536` | `1024` 이상 정수 | 파일 쓰기 버퍼 크기입니다. 너무 작으면 자잘한 쓰기가 늘고, 어느 정도 크게 두면 성능에 도움이 됩니다. 기본값이면 보통 충분합니다. |
+
+## SPLogErrorFileOptions
+
+| 옵션 | 기본값 | 선택지 | 자세한 설명 |
+|---|---:|---|---|
+| `FilePath` | `errors/error.log` | 폴더 경로 또는 전체 파일 경로 | 추가 에러 파일 위치입니다. 여러 로거가 하나의 공용 에러 파일에 쓰게 하려면 `logs/error.log`처럼 파일명까지 포함한 같은 경로를 지정하세요. 폴더만 주면 해당 로거의 `Name`으로 파일을 만듭니다. |
+| `MinimumLevel` | `Error` | `Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical` | 어떤 레벨부터 에러 파일에 복사할지 정합니다. 보통은 `Error`를 쓰며, 이 경우 `Error`와 `Critical`이 복사됩니다. |
+| `UseUtcTimestamp` | `false` | `true`, `false` | 에러 파일의 타임스탬프와 rolling 기간 계산 기준입니다. 여러 장비나 여러 지역 로그를 같이 봐야 하면 `true`가 편합니다. |
+| `FileConflictMode` | `Append` | `Append`, `CreateNew` | 메인 파일과 같은 방식이지만 에러 파일에 적용됩니다. |
+| `FileRollingMode` | `Daily` | `None`, `Daily`, `Hourly` | 메인 파일과 같은 rolling 선택지이지만 에러 파일에 적용됩니다. |
+| `MaxFileSizeBytes` | `10485760` | 0보다 큰 정수 | 에러 파일이 이 크기에 도달하면 다음 번호 파일로 넘어갑니다. |
+| `MaxRollingFiles` | `14` | 0보다 큰 정수 | 최신 에러 로그 파일을 몇 개까지 보관할지 정합니다. 오래된 파일은 자동 삭제됩니다. |
+| `FileBufferSize` | `65536` | `1024` 이상 정수 | 공용 에러 파일 writer의 버퍼 크기입니다. |
 
 ## 참고
 

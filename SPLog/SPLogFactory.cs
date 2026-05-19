@@ -34,7 +34,7 @@ public static class SPLogFactory
 
     private static ILogSink CreateSink(SPLogOptions options)
     {
-        var sinks = new List<ILogSink>(2);
+        var sinks = new List<ILogSink>(3);
 
         if (options.EnableConsole)
         {
@@ -44,6 +44,11 @@ public static class SPLogFactory
         if (options.EnableFile)
         {
             sinks.Add(new FileLogSink(options));
+        }
+
+        if (options.ErrorFile is not null)
+        {
+            sinks.Add(new ErrorFileSink(options));
         }
 
         if (sinks.Count == 0)

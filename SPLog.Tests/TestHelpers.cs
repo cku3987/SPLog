@@ -47,12 +47,17 @@ internal static class TestHelpers
         var builder = new StringBuilder();
         foreach (var file in Directory.GetFiles(logDirectory, "*.log", SearchOption.TopDirectoryOnly))
         {
-            using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-            builder.AppendLine(reader.ReadToEnd());
+            builder.AppendLine(ReadAllTextShared(file));
         }
 
         return builder.ToString();
+    }
+
+    public static string ReadAllTextShared(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
     }
 
     private static IEnumerable<string> ReadLinesShared(string path)

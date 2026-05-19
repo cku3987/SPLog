@@ -22,6 +22,8 @@ public sealed class SPLogOptions
 
     public string FilePath { get; set; } = "logs";
 
+    public SPLogErrorFileOptions? ErrorFile { get; set; }
+
     public FileConflictMode FileConflictMode { get; set; } = FileConflictMode.Append;
 
     public FileRollingMode FileRollingMode { get; set; } = FileRollingMode.Daily;
@@ -42,6 +44,7 @@ public sealed class SPLogOptions
     {
         Name = string.IsNullOrWhiteSpace(Name) ? "SPLog" : Name.Trim();
         FilePath = string.IsNullOrWhiteSpace(FilePath) ? "logs" : FilePath.Trim();
+        ErrorFile?.Normalize();
     }
 
     internal void CopyFrom(SPLogOptions source)
@@ -56,6 +59,7 @@ public sealed class SPLogOptions
         EnableConsole = source.EnableConsole;
         EnableFile = source.EnableFile;
         FilePath = source.FilePath;
+        ErrorFile = source.ErrorFile is null ? null : source.ErrorFile.Clone();
         FileConflictMode = source.FileConflictMode;
         FileRollingMode = source.FileRollingMode;
         MaxFileSizeBytes = source.MaxFileSizeBytes;
@@ -80,6 +84,7 @@ public sealed class SPLogOptions
             EnableConsole = EnableConsole,
             EnableFile = EnableFile,
             FilePath = FilePath,
+            ErrorFile = ErrorFile is null ? null : ErrorFile.Clone(),
             FileConflictMode = FileConflictMode,
             FileRollingMode = FileRollingMode,
             MaxFileSizeBytes = MaxFileSizeBytes,
@@ -148,5 +153,7 @@ public sealed class SPLogOptions
         {
             throw new ArgumentException("FilePath is required when file logging is enabled.", nameof(FilePath));
         }
+
+        ErrorFile?.Validate();
     }
 }

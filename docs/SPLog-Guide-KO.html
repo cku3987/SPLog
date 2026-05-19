@@ -140,7 +140,50 @@
   <ul>
     <li>콘솔 로깅이 켜져 있으면 같은 콘솔 출력으로 기록됩니다.</li>
     <li>파일 로깅이 켜져 있으면 같은 로그 파일로 기록됩니다.</li>
-    <li>즉, 예외 로그는 일반 로그와 같은 출력 대상으로 나갑니다.</li>
+    <li><code>ErrorFile</code>이 설정되어 있고 레벨이 <code>Error</code> 또는 <code>Critical</code>이면 공용 에러 파일에도 같이 기록됩니다.</li>
+    <li><code>ErrorFile</code>이 없으면 예외 로그는 일반 로그와 같은 출력 대상으로만 나갑니다.</li>
+  </ul>
+
+  <h2>공용 에러 파일</h2>
+  <p>각 로거는 자기 메인 로그를 따로 남기고, 실패 로그만 하나의 공용 에러 파일에도 같이 모으고 싶을 때 <code>ErrorFile</code>을 씁니다.</p>
+  <pre><code><span class="kw">var</span> sharedErrorFile = <span class="kw">new</span> SPLogErrorFileOptions
+{
+    FilePath = <span class="str">"logs/error.log"</span>,
+    MinimumLevel = LogLevel.Error,
+    FileRollingMode = FileRollingMode.Daily
+};
+
+<span class="kw">using</span> <span class="kw">var</span> moduleALog = SPLogFactory.Create(options =&gt;
+{
+    options.Name = <span class="str">"ModuleA"</span>;
+    options.EnableFile = <span class="kw">true</span>;
+    options.FilePath = <span class="str">"logs/module-a"</span>;
+    options.ErrorFile = sharedErrorFile;
+});
+
+<span class="kw">using</span> <span class="kw">var</span> moduleBLog = SPLogFactory.Create(options =&gt;
+{
+    options.Name = <span class="str">"ModuleB"</span>;
+    options.EnableFile = <span class="kw">true</span>;
+    options.FilePath = <span class="str">"logs/module-b"</span>;
+    options.ErrorFile = sharedErrorFile;
+});
+
+moduleALog.Information(<span class="str">"module A started"</span>);
+moduleALog.Error(<span class="str">"module A failed"</span>);
+moduleBLog.Error(<span class="str">"module B failed"</span>);</code></pre>
+  <p>결과:</p>
+  <ul>
+    <li>ModuleA는 자기 메인 로그에 일반 로그와 에러를 모두 남깁니다.</li>
+    <li>ModuleB도 자기 메인 로그에 일반 로그와 에러를 모두 남깁니다.</li>
+    <li><code>Error</code>와 <code>Critical</code> 로그는 <code>logs/error.log</code>에도 같이 모입니다.</li>
+  </ul>
+  <p>주의할 점:</p>
+  <ul>
+    <li><code>ErrorFile</code>은 메인 로그를 대체하지 않습니다. 에러 레벨 로그를 추가 파일에도 한 번 더 쓰는 기능입니다.</li>
+    <li>여러 로거가 하나의 에러 파일을 공유하려면 <code>logs/error.log</code>처럼 같은 전체 파일 경로를 지정하세요.</li>
+    <li><code>ErrorFile.FilePath</code>에 폴더만 주면 일반 <code>FilePath</code>처럼 해당 로거의 <code>Name</code>으로 파일을 만듭니다.</li>
+    <li><code>MinimumLevel</code>은 먼저 적용됩니다. 메인 로거가 <code>MinimumLevel = Critical</code>이면 <code>Error</code> 로그는 <code>ErrorFile</code>까지 가지 못하고 필터링됩니다.</li>
   </ul>
 
   <h2>로깅 문자열 사용 예시</h2>
@@ -206,6 +249,7 @@ SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.c
     <tr><td><code>EnableConsole</code></td><td><code>true</code></td><td><code>true</code>, <code>false</code></td><td>콘솔 창에도 로그를 출력합니다. 개발 중이나 테스트 중에 유용합니다.</td></tr>
     <tr><td><code>EnableFile</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>파일로 로그를 남깁니다. 실제 프로그램에서는 대부분 켭니다.</td></tr>
     <tr><td><code>FilePath</code></td><td><code>logs</code></td><td>폴더 경로 또는 전체 파일 경로</td><td><code>logs</code>처럼 폴더만 주면 SPLog가 <code>&lt;Name&gt;.log</code>를 자동 생성합니다. 상대 경로는 exe 폴더 기준이고, 절대 경로는 그대로 사용합니다.</td></tr>
+    <tr><td><code>ErrorFile</code></td><td><code>null</code></td><td><code>null</code> 또는 <code>SPLogErrorFileOptions</code></td><td><code>Error</code>와 <code>Critical</code> 로그를 추가 파일에도 같이 남기는 옵션입니다. 조건에 맞는 로그는 일반 출력 대상에도 기록되고, 에러 파일에도 한 번 더 기록됩니다. 여러 로거가 하나의 에러 로그를 공유하려면 같은 전체 <code>ErrorFile.FilePath</code>를 쓰면 됩니다.</td></tr>
     <tr><td><code>FileRollingMode</code></td><td><code>Daily</code></td><td><code>None</code>, <code>Daily</code>, <code>Hourly</code></td><td><code>None</code>은 날짜나 시간 suffix 없이 사용합니다. <code>Daily</code>는 하루마다, <code>Hourly</code>는 한 시간마다 파일을 나눕니다. 로그 양이 많으면 <code>Hourly</code>가 관리하기 쉽습니다.</td></tr>
     <tr><td><code>MaxFileSizeBytes</code></td><td><code>10485760</code> (10 MB)</td><td>0보다 큰 정수</td><td>이 크기에 도달하면 다음 번호 파일로 넘어갑니다. 크게 하면 파일 수는 줄고, 작게 하면 파일 관리가 쉬워집니다.</td></tr>
     <tr><td><code>MaxRollingFiles</code></td><td><code>14</code></td><td>0보다 큰 정수</td><td>최신 rolling 파일을 몇 개까지 남길지 정합니다. 오래된 파일은 자동 삭제됩니다.</td></tr>
@@ -213,6 +257,18 @@ SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.c
     <tr><td><code>BatchSize</code></td><td><code>10</code></td><td>0보다 큰 정수</td><td>한 번에 묶어서 처리할 최대 로그 개수입니다. 기본값 <code>10</code>은 일반적인 사용에서 속도와 단순함의 균형이 괜찮은 값입니다. SPLog는 10개가 다 찰 때까지 무조건 기다리지 않고, 지금 들어와 있는 개수만큼 먼저 기록할 수 있습니다. 값을 키우면 보통 파일 쓰기 성능이 좋아집니다.</td></tr>
     <tr><td><code>FlushIntervalMs</code></td><td><code>100</code></td><td>0보다 큰 정수</td><td>백그라운드 flush 주기입니다. 작게 하면 더 빨리 파일에 보이지만 I/O가 늘고, 크게 하면 성능은 좋아질 수 있지만 파일 반영은 조금 늦어집니다.</td></tr>
     <tr><td><code>FileBufferSize</code></td><td><code>65536</code></td><td><code>1024</code> 이상 정수</td><td>파일 쓰기 버퍼 크기입니다. 기본값이면 대부분 충분합니다.</td></tr>
+  </table>
+  <h2>SPLogErrorFileOptions</h2>
+  <table>
+    <tr><th>옵션</th><th>기본값</th><th>선택지</th><th>자세한 설명</th></tr>
+    <tr><td><code>FilePath</code></td><td><code>errors/error.log</code></td><td>폴더 경로 또는 전체 파일 경로</td><td>추가 에러 파일 위치입니다. 여러 로거가 하나의 공용 에러 파일에 쓰게 하려면 <code>logs/error.log</code>처럼 파일명까지 포함한 같은 경로를 지정하세요. 폴더만 주면 해당 로거의 <code>Name</code>으로 파일을 만듭니다.</td></tr>
+    <tr><td><code>MinimumLevel</code></td><td><code>Error</code></td><td><code>Trace</code>, <code>Debug</code>, <code>Information</code>, <code>Warning</code>, <code>Error</code>, <code>Critical</code></td><td>어떤 레벨부터 에러 파일에 복사할지 정합니다. 보통은 <code>Error</code>를 쓰며, 이 경우 <code>Error</code>와 <code>Critical</code>이 복사됩니다.</td></tr>
+    <tr><td><code>UseUtcTimestamp</code></td><td><code>false</code></td><td><code>true</code>, <code>false</code></td><td>에러 파일의 타임스탬프와 rolling 기간 계산 기준입니다. 여러 장비나 여러 지역 로그를 같이 봐야 하면 <code>true</code>가 편합니다.</td></tr>
+    <tr><td><code>FileConflictMode</code></td><td><code>Append</code></td><td><code>Append</code>, <code>CreateNew</code></td><td>메인 파일과 같은 방식이지만 에러 파일에 적용됩니다.</td></tr>
+    <tr><td><code>FileRollingMode</code></td><td><code>Daily</code></td><td><code>None</code>, <code>Daily</code>, <code>Hourly</code></td><td>메인 파일과 같은 rolling 선택지이지만 에러 파일에 적용됩니다.</td></tr>
+    <tr><td><code>MaxFileSizeBytes</code></td><td><code>10485760</code></td><td>0보다 큰 정수</td><td>에러 파일이 이 크기에 도달하면 다음 번호 파일로 넘어갑니다.</td></tr>
+    <tr><td><code>MaxRollingFiles</code></td><td><code>14</code></td><td>0보다 큰 정수</td><td>최신 에러 로그 파일을 몇 개까지 보관할지 정합니다. 오래된 파일은 자동 삭제됩니다.</td></tr>
+    <tr><td><code>FileBufferSize</code></td><td><code>65536</code></td><td><code>1024</code> 이상 정수</td><td>공용 에러 파일 writer의 버퍼 크기입니다.</td></tr>
   </table>
   <h2>FileConflictMode</h2>
   <p>큐가 가득 차면 SPLog는 새 로그를 버리지 않고 자리가 날 때까지 기다립니다.</p>

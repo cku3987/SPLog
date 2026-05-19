@@ -158,13 +158,60 @@ Where exception logs are written:
 
 - To the same console output, if console logging is enabled
 - To the same file output, if file logging is enabled
-- In short, exception logs use the same logger targets as normal logs
+- To the shared error file too, if `ErrorFile` is configured and the level is `Error` or `Critical`
+- Without `ErrorFile`, exception logs use the same logger targets as normal logs
 
 Recommended exception methods:
 
 - `logger.Warning(ex, "...")`
 - `logger.Error(ex, "...")`
 - `logger.Critical(ex, "...")`
+
+## Shared Error File
+
+Use `ErrorFile` when each logger should keep its own normal log, but all failures should also be gathered into one common error file.
+
+```csharp
+var sharedErrorFile = new SPLogErrorFileOptions
+{
+    FilePath = "logs/error.log",
+    MinimumLevel = LogLevel.Error,
+    FileRollingMode = FileRollingMode.Daily
+};
+
+using var moduleALog = SPLogFactory.Create(options =>
+{
+    options.Name = "ModuleA";
+    options.EnableFile = true;
+    options.FilePath = "logs/module-a";
+    options.ErrorFile = sharedErrorFile;
+});
+
+using var moduleBLog = SPLogFactory.Create(options =>
+{
+    options.Name = "ModuleB";
+    options.EnableFile = true;
+    options.FilePath = "logs/module-b";
+    options.ErrorFile = sharedErrorFile;
+});
+
+moduleALog.Information("module A started");
+moduleALog.Error("module A failed");
+moduleBLog.Error("module B failed");
+```
+
+Result:
+
+- ModuleA writes normal logs and errors to its own main log.
+- ModuleB writes normal logs and errors to its own main log.
+- Both `Error` and `Critical` entries are also written to `logs/error.log`.
+
+Important behavior:
+
+- `ErrorFile` does not replace the main log. It adds a second file target for error-level entries.
+- To share one error file across multiple loggers, use the same full file path such as `logs/error.log`.
+- If `ErrorFile.FilePath` is a folder path, SPLog creates a file using that logger's `Name`, just like `FilePath`.
+- `MinimumLevel` still applies first. If the main logger is set to `MinimumLevel = Critical`, `Error` messages are filtered before they can reach `ErrorFile`.
 
 ## Logging String Examples
 
@@ -303,6 +350,7 @@ Examples with `Name = "Core"` and `FilePath = "logs"`:
 | `EnableConsole` | `true` | `true`, `false` | Writes logs to the console window. Good during development, testing, or command-line tools. In Windows services or background apps, this may not be useful. |
 | `EnableFile` | `false` | `true`, `false` | Writes logs to files. In most real applications this should be `true`. If both `EnableConsole` and `EnableFile` are `false`, logger creation fails because there is nowhere to write logs. |
 | `FilePath` | `logs` | Folder path or full file path | This is the base log location. If you pass a folder path like `logs`, SPLog creates `<Name>.log` automatically. If you pass a full file path like `D:\Logs\custom.log`, SPLog uses that file name directly. Relative paths use the executable folder as the base. |
+| `ErrorFile` | `null` | `null` or `SPLogErrorFileOptions` | Optional extra file target for `Error` and `Critical` entries. When set, matching entries are written to the normal targets and also to the configured error file. Use the same full `ErrorFile.FilePath` on several loggers when you want one shared error log. |
 | `FileConflictMode` | `Append` | `Append`, `CreateNew` | Controls what happens when the current target file already exists. `Append` keeps writing to the existing file. `CreateNew` starts a new distinguishable file by adding a numbered suffix such as `_001`, `_002`. The first file still uses the normal base name, and the numbered suffix starts only when another file for the same period already exists. |
 | `FileRollingMode` | `Daily` | `None`, `Daily`, `Hourly` | Controls time-based file splitting. `None` means no date or time suffix. `Daily` creates one logical file per day using `yyyyMMdd`. `Hourly` creates one logical file per hour using `yyyyMMdd_HH`. If you expect very high log volume, `Hourly` is usually easier to manage. |
 | `MaxFileSizeBytes` | `10485760` | Any positive integer | Maximum file size before SPLog rolls to the next numbered file. Default is 10 MB. Larger values create fewer files but each file becomes heavier. Smaller values create more files but make upload, inspection, and cleanup easier. |
@@ -311,6 +359,19 @@ Examples with `Name = "Core"` and `FilePath = "logs"`:
 | `BatchSize` | `10` | Any positive integer | Maximum number of log entries written together in one background batch. The default `10` is a practical balance for normal use. SPLog does not wait until all 10 entries exist; if fewer entries are available, it writes the smaller batch. Larger values usually improve write performance because the logger touches the file fewer times. |
 | `FlushIntervalMs` | `100` | Any positive integer | Background flush interval in milliseconds. `100` means roughly every 0.1 seconds. Smaller values make logs appear on disk sooner, but increase I/O frequency. Larger values reduce I/O overhead, but logs stay in memory a little longer before reaching the file. |
 | `FileBufferSize` | `65536` | `1024` or larger | Buffer size used by file writing. Bigger buffers can reduce repeated small writes and help performance. The default is already large enough for most cases. |
+
+## SPLogErrorFileOptions
+
+| Option | Default | Choices | Detailed description |
+|---|---:|---|---|
+| `FilePath` | `errors/error.log` | Folder path or full file path | Location of the extra error file. Use a full file path such as `logs/error.log` when multiple loggers should write to the same shared error file. If you pass a folder, SPLog creates `<Name>.log` inside that folder. |
+| `MinimumLevel` | `Error` | `Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical` | Controls which entries are copied to the error file. The usual value is `Error`, which means `Error` and `Critical` are copied. |
+| `UseUtcTimestamp` | `false` | `true`, `false` | Controls timestamp and rolling period for the error file. Use `true` when several machines or regions need one common time standard. |
+| `FileConflictMode` | `Append` | `Append`, `CreateNew` | Same behavior as the main file option, but applied to the error file. |
+| `FileRollingMode` | `Daily` | `None`, `Daily`, `Hourly` | Same rolling choices as the main file option, but applied to the error file. |
+| `MaxFileSizeBytes` | `10485760` | Any positive integer | Maximum error file size before size rolling creates the next numbered file. |
+| `MaxRollingFiles` | `14` | Any positive integer | Number of recent error log files to keep. Older files are deleted automatically. |
+| `FileBufferSize` | `65536` | `1024` or larger | Buffer size used by the shared error file writer. |
 ## Notes
 
 - Always dispose each logger to flush remaining queued entries.

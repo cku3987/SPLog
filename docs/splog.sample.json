@@ -8,6 +8,16 @@
   "EnableConsole": true,
   "EnableFile": true,
   "FilePath": "logs",
+  "ErrorFile": {
+    "FilePath": "logs/error.log",
+    "MinimumLevel": "Error",
+    "UseUtcTimestamp": false,
+    "FileConflictMode": "Append",
+    "FileRollingMode": "Daily",
+    "MaxFileSizeBytes": 10485760,
+    "MaxRollingFiles": 14,
+    "FileBufferSize": 65536
+  },
   "FileConflictMode": "Append",
   "FileRollingMode": "Daily",
   "MaxFileSizeBytes": 10485760,

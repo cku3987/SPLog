@@ -7,6 +7,8 @@ var tests = new (string Name, Func<Task> Execute)[]
     ("Dispose flushes queued messages", DisposeFlushesQueuedMessagesAsync),
     ("BatchSize does not wait for a full batch", BatchSizeDoesNotWaitForFullBatchAsync),
     ("Queue backpressure waits instead of throwing", QueueBackpressureWaitsInsteadOfThrowingAsync),
+    ("Error file receives only error-level entries and still keeps main logs", ErrorFileReceivesOnlyErrorLevelEntriesAsync),
+    ("Multiple loggers can share one error file", MultipleLoggersCanShareOneErrorFileAsync),
     ("MinimumLevel filters lower levels", MinimumLevelFiltersMessagesAsync),
     ("Category loggers share the same writer and keep hierarchical names", CategoryLoggersShareWriterAsync),
     ("Sequence numbers can be included for ordering diagnostics", SequenceNumbersCanBeIncludedAsync),
@@ -122,6 +124,111 @@ static async Task QueueBackpressureWaitsInsteadOfThrowingAsync()
     }
 
     TestAssert.Equal(3, sink.WrittenEntries, "All queued messages should still be delivered after backpressure is released.");
+}
+
+static Task ErrorFileReceivesOnlyErrorLevelEntriesAsync()
+{
+    using var scope = new TestScope();
+    var mainDirectory = scope.CreateSubdirectory("main");
+    var sharedErrorPath = Path.Combine(scope.RootDirectory, "errors", "shared-error.log");
+
+    using (var logger = SPLogFactory.Create(options =>
+           {
+               options.Name = "Gui";
+               options.EnableConsole = false;
+               options.EnableFile = true;
+               options.FilePath = mainDirectory;
+               options.FileRollingMode = FileRollingMode.None;
+               options.ErrorFile = new SPLogErrorFileOptions
+               {
+                   FilePath = sharedErrorPath,
+                   MinimumLevel = LogLevel.Error,
+                   FileRollingMode = FileRollingMode.None
+               };
+           }))
+    {
+        logger.Information("MAIN|INFO");
+        logger.Warning("MAIN|WARN");
+        logger.Error("MAIN|ERROR");
+        logger.Critical("MAIN|CRITICAL");
+    }
+
+    var mainContent = TestHelpers.ReadAllLogText(mainDirectory);
+    var errorContent = TestHelpers.ReadAllTextShared(sharedErrorPath);
+
+    TestAssert.True(mainContent.Contains("MAIN|INFO", StringComparison.Ordinal), "Main log should keep information messages.");
+    TestAssert.True(mainContent.Contains("MAIN|WARN", StringComparison.Ordinal), "Main log should keep warning messages.");
+    TestAssert.True(mainContent.Contains("MAIN|ERROR", StringComparison.Ordinal), "Main log should keep error messages.");
+    TestAssert.True(mainContent.Contains("MAIN|CRITICAL", StringComparison.Ordinal), "Main log should keep critical messages.");
+
+    TestAssert.False(errorContent.Contains("MAIN|INFO", StringComparison.Ordinal), "Shared error log should not include information messages.");
+    TestAssert.False(errorContent.Contains("MAIN|WARN", StringComparison.Ordinal), "Shared error log should not include warning messages.");
+    TestAssert.True(errorContent.Contains("MAIN|ERROR", StringComparison.Ordinal), "Shared error log should include error messages.");
+    TestAssert.True(errorContent.Contains("MAIN|CRITICAL", StringComparison.Ordinal), "Shared error log should include critical messages.");
+    return Task.CompletedTask;
+}
+
+static Task MultipleLoggersCanShareOneErrorFileAsync()
+{
+    using var scope = new TestScope();
+    var moduleADirectory = scope.CreateSubdirectory("module-a");
+    var moduleBDirectory = scope.CreateSubdirectory("module-b");
+    var sharedErrorPath = Path.Combine(scope.RootDirectory, "errors", "application-error.log");
+
+    using (var moduleALogger = SPLogFactory.Create(options =>
+           {
+               options.Name = "ModuleA";
+               options.EnableConsole = false;
+               options.EnableFile = true;
+               options.FilePath = moduleADirectory;
+               options.FileRollingMode = FileRollingMode.None;
+               options.ErrorFile = new SPLogErrorFileOptions
+               {
+                   FilePath = sharedErrorPath,
+                   MinimumLevel = LogLevel.Error,
+                   FileRollingMode = FileRollingMode.None
+               };
+           }))
+    using (var moduleBLogger = SPLogFactory.Create(options =>
+           {
+               options.Name = "ModuleB";
+               options.EnableConsole = false;
+               options.EnableFile = true;
+               options.FilePath = moduleBDirectory;
+               options.FileRollingMode = FileRollingMode.None;
+               options.ErrorFile = new SPLogErrorFileOptions
+               {
+                   FilePath = sharedErrorPath,
+                   MinimumLevel = LogLevel.Error,
+                   FileRollingMode = FileRollingMode.None
+               };
+           }))
+    {
+        moduleALogger.Information("MODULEA|INFO");
+        moduleALogger.Error("MODULEA|ERROR");
+        moduleBLogger.Information("MODULEB|INFO");
+        moduleBLogger.Error("MODULEB|ERROR");
+    }
+
+    var moduleAContent = TestHelpers.ReadAllLogText(moduleADirectory);
+    var moduleBContent = TestHelpers.ReadAllLogText(moduleBDirectory);
+    var sharedErrorContent = TestHelpers.ReadAllTextShared(sharedErrorPath);
+
+    TestAssert.True(moduleAContent.Contains("MODULEA|INFO", StringComparison.Ordinal), "ModuleA main log should keep ModuleA information messages.");
+    TestAssert.True(moduleAContent.Contains("MODULEA|ERROR", StringComparison.Ordinal), "ModuleA main log should keep ModuleA error messages.");
+    TestAssert.False(moduleAContent.Contains("MODULEB|ERROR", StringComparison.Ordinal), "ModuleA main log should not contain ModuleB messages.");
+
+    TestAssert.True(moduleBContent.Contains("MODULEB|INFO", StringComparison.Ordinal), "ModuleB main log should keep ModuleB information messages.");
+    TestAssert.True(moduleBContent.Contains("MODULEB|ERROR", StringComparison.Ordinal), "ModuleB main log should keep ModuleB error messages.");
+    TestAssert.False(moduleBContent.Contains("MODULEA|ERROR", StringComparison.Ordinal), "ModuleB main log should not contain ModuleA messages.");
+
+    TestAssert.True(sharedErrorContent.Contains("MODULEA|ERROR", StringComparison.Ordinal), "Shared error log should contain ModuleA errors.");
+    TestAssert.True(sharedErrorContent.Contains("MODULEB|ERROR", StringComparison.Ordinal), "Shared error log should contain ModuleB errors.");
+    TestAssert.False(sharedErrorContent.Contains("MODULEA|INFO", StringComparison.Ordinal), "Shared error log should not contain ModuleA information messages.");
+    TestAssert.False(sharedErrorContent.Contains("MODULEB|INFO", StringComparison.Ordinal), "Shared error log should not contain ModuleB information messages.");
+    TestAssert.True(sharedErrorContent.Contains("[ModuleA]", StringComparison.Ordinal), "Shared error log should include the ModuleA logger name.");
+    TestAssert.True(sharedErrorContent.Contains("[ModuleB]", StringComparison.Ordinal), "Shared error log should include the ModuleB logger name.");
+    return Task.CompletedTask;
 }
 
 static Task MinimumLevelFiltersMessagesAsync()
@@ -361,6 +468,11 @@ static Task UpdateFromJsonFileUpdatesOptionsAsync()
                  "EnableConsole": false,
                  "EnableFile": true,
                  "FilePath": "logs",
+                 "ErrorFile": {
+                   "FilePath": "errors/shared-error.log",
+                   "MinimumLevel": "Error",
+                   "FileRollingMode": "Hourly"
+                 },
                  "FileConflictMode": "CreateNew",
                  "BatchSize": 12
                }
@@ -382,6 +494,10 @@ static Task UpdateFromJsonFileUpdatesOptionsAsync()
     TestAssert.False(options.EnableConsole, "UpdateFromJsonFile should replace console setting.");
     TestAssert.True(options.EnableFile, "UpdateFromJsonFile should replace file setting.");
     TestAssert.Equal("logs", options.FilePath, "UpdateFromJsonFile should normalize and replace FilePath.");
+    TestAssert.True(options.ErrorFile is not null, "UpdateFromJsonFile should populate ErrorFile settings.");
+    TestAssert.Equal("errors/shared-error.log", options.ErrorFile?.FilePath, "UpdateFromJsonFile should replace ErrorFile path.");
+    TestAssert.Equal(LogLevel.Error, options.ErrorFile?.MinimumLevel, "UpdateFromJsonFile should replace ErrorFile minimum level.");
+    TestAssert.Equal(FileRollingMode.Hourly, options.ErrorFile?.FileRollingMode, "UpdateFromJsonFile should replace ErrorFile rolling mode.");
     TestAssert.Equal(FileConflictMode.CreateNew, options.FileConflictMode, "UpdateFromJsonFile should replace enum values.");
     TestAssert.Equal(12, options.BatchSize, "UpdateFromJsonFile should replace BatchSize.");
     return Task.CompletedTask;

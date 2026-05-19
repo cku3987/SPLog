@@ -17,6 +17,7 @@ Targets:
 - File logging and console logging out of the box
 - External JSON configuration support
 - Exception logging support
+- Shared error file support
 - Daily and hourly rolling
 - `Append` and `CreateNew` file conflict handling
 
@@ -43,9 +44,48 @@ try
 }
 catch (Exception ex)
 {
-logger.Error(ex, "process failed");
+    logger.Error(ex, "process failed");
 }
 ```
+
+## Shared Error File
+
+Each logger can keep its own main file while `Error` and `Critical` messages are also written to one shared error file:
+
+```csharp
+var sharedErrorFile = new SPLogErrorFileOptions
+{
+    FilePath = "logs/error.log",
+    MinimumLevel = LogLevel.Error,
+    FileRollingMode = FileRollingMode.Daily
+};
+
+using var moduleALog = SPLogFactory.Create(options =>
+{
+    options.Name = "ModuleA";
+    options.EnableFile = true;
+    options.FilePath = "logs/module-a";
+    options.ErrorFile = sharedErrorFile;
+});
+
+using var moduleBLog = SPLogFactory.Create(options =>
+{
+    options.Name = "ModuleB";
+    options.EnableFile = true;
+    options.FilePath = "logs/module-b";
+    options.ErrorFile = sharedErrorFile;
+});
+
+moduleALog.Information("module A started");
+moduleALog.Error("module A failed");
+moduleBLog.Error("module B failed");
+```
+
+Result:
+
+- `module-a/ModuleA_yyyyMMdd.log` contains ModuleA normal logs and errors
+- `module-b/ModuleB_yyyyMMdd.log` contains ModuleB normal logs and errors
+- `logs/error_yyyyMMdd.log` contains the ModuleA and ModuleB error lines together
 
 ## Global Logger With Categories
 
@@ -86,6 +126,16 @@ Example JSON:
   "EnableConsole": false,
   "EnableFile": true,
   "FilePath": "logs",
+  "ErrorFile": {
+    "FilePath": "logs/error.log",
+    "MinimumLevel": "Error",
+    "UseUtcTimestamp": false,
+    "FileConflictMode": "Append",
+    "FileRollingMode": "Daily",
+    "MaxFileSizeBytes": 10485760,
+    "MaxRollingFiles": 14,
+    "FileBufferSize": 65536
+  },
   "FileConflictMode": "Append",
   "FileRollingMode": "Hourly",
   "MaxFileSizeBytes": 10485760,

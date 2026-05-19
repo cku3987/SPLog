@@ -16,7 +16,7 @@ internal sealed class FileLogSink : ILogSink
     public FileLogSink(SPLogOptions options)
     {
         _options = options;
-        var fullPath = ResolveLogPath(options.FilePath, options.Name);
+        var fullPath = FilePathResolver.ResolveLogPath(options.FilePath, options.Name);
         _baseDirectory = Path.GetDirectoryName(fullPath) ?? Directory.GetCurrentDirectory();
         _fileNameWithoutExtension = Path.GetFileNameWithoutExtension(fullPath);
         _fileExtension = Path.GetExtension(fullPath);
@@ -212,49 +212,5 @@ internal sealed class FileLogSink : ILogSink
             FileRollingMode.Hourly => timestamp.ToString("yyyyMMdd_HH"),
             _ => string.Empty
         };
-    }
-
-    private static string ResolveLogPath(string filePath, string loggerName)
-    {
-        var resolvedPath = Path.IsPathRooted(filePath)
-            ? Path.GetFullPath(filePath)
-            : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, filePath));
-
-        if (LooksLikeDirectoryPath(filePath, resolvedPath))
-        {
-            return Path.Combine(resolvedPath, $"{SanitizeFileName(loggerName)}.log");
-        }
-
-        return resolvedPath;
-    }
-
-    private static bool LooksLikeDirectoryPath(string originalPath, string resolvedPath)
-    {
-        if (originalPath.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
-            || originalPath.EndsWith(Path.AltDirectorySeparatorChar.ToString(), StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        if (Directory.Exists(resolvedPath))
-        {
-            return true;
-        }
-
-        return string.IsNullOrEmpty(Path.GetExtension(resolvedPath));
-    }
-
-    private static string SanitizeFileName(string loggerName)
-    {
-        var invalidChars = Path.GetInvalidFileNameChars();
-        var builder = new StringBuilder(loggerName.Length);
-
-        for (var i = 0; i < loggerName.Length; i++)
-        {
-            var ch = loggerName[i];
-            builder.Append(invalidChars.Contains(ch) ? '_' : ch);
-        }
-
-        return string.IsNullOrWhiteSpace(builder.ToString()) ? "SPLog" : builder.ToString();
     }
 }
