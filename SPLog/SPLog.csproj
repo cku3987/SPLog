@@ -5,11 +5,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <Version>1.2.1</Version>
-    <PackageVersion>1.2.1</PackageVersion>
-    <AssemblyVersion>1.2.1.0</AssemblyVersion>
-    <FileVersion>1.2.1.0</FileVersion>
-    <InformationalVersion>1.2.1</InformationalVersion>
+    <Version>1.2.2</Version>
+    <PackageVersion>1.2.2</PackageVersion>
+    <AssemblyVersion>1.2.2.0</AssemblyVersion>
+    <FileVersion>1.2.2.0</FileVersion>
+    <InformationalVersion>1.2.2</InformationalVersion>
     <Description>Lightweight logging DLL focused on performance, simplicity, and practical file logging for .NET applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/cku3987/SPLog</RepositoryUrl>

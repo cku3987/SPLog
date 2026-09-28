@@ -110,6 +110,8 @@ socketLog.Error("socket closed");
 
 This keeps one shared queue and one shared writer, while log lines are identified as `App.Core`, `App.Network`, and `App.Network.Socket`.
 
+Independent loggers using `FileConflictMode.Append` and the same resolved main file path also share one writer within a process. Their file rolling, size, retention, buffer, and UTC settings must match; conflicting settings cause logger creation to fail. `CreateNew` continues to create a separate file for each logger. File writing is not coordinated across separate processes.
+
 ## External Configuration
 
 ```csharp

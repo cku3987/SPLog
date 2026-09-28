@@ -11,6 +11,10 @@ var tests = new (string Name, Func<Task> Execute)[]
     ("Error file target is created only after a matching error entry", ErrorFileTargetIsCreatedOnlyAfterMatchingErrorEntryAsync),
     ("Error file receives only error-level entries and still keeps main logs", ErrorFileReceivesOnlyErrorLevelEntriesAsync),
     ("Multiple loggers can share one error file", MultipleLoggersCanShareOneErrorFileAsync),
+    ("Multiple loggers can append to one main file without losing entries", MultipleLoggersCanAppendToOneMainFileAsync),
+    ("Shared main file stays open until its last logger is disposed", SharedMainFileStaysOpenUntilLastLoggerIsDisposedAsync),
+    ("Shared main file rejects conflicting target settings", SharedMainFileRejectsConflictingTargetSettingsAsync),
+    ("Failed logger creation releases its shared main file", FailedLoggerCreationReleasesSharedMainFileAsync),
     ("MinimumLevel filters lower levels", MinimumLevelFiltersMessagesAsync),
     ("Category loggers share the same writer and keep hierarchical names", CategoryLoggersShareWriterAsync),
     ("Sequence numbers can be included for ordering diagnostics", SequenceNumbersCanBeIncludedAsync),
@@ -331,6 +335,176 @@ static Task MultipleLoggersCanShareOneErrorFileAsync()
     TestAssert.False(sharedErrorContent.Contains("MODULEB|INFO", StringComparison.Ordinal), "Shared error log should not contain ModuleB information messages.");
     TestAssert.True(sharedErrorContent.Contains("[ModuleA]", StringComparison.Ordinal), "Shared error log should include the ModuleA logger name.");
     TestAssert.True(sharedErrorContent.Contains("[ModuleB]", StringComparison.Ordinal), "Shared error log should include the ModuleB logger name.");
+    return Task.CompletedTask;
+}
+
+static async Task MultipleLoggersCanAppendToOneMainFileAsync()
+{
+    using var scope = new TestScope();
+    var logDirectory = scope.CreateSubdirectory("logs");
+    var sharedPath = Path.Combine(logDirectory, "shared.log");
+    const int loggerCount = 4;
+    const int messagesPerLogger = 1_000;
+
+    var loggers = Enumerable.Range(0, loggerCount)
+        .Select(index => SPLogFactory.Create(options =>
+        {
+            options.Name = $"Shared{index}";
+            options.EnableConsole = false;
+            options.EnableFile = true;
+            options.FilePath = sharedPath;
+            options.FileRollingMode = FileRollingMode.None;
+            options.FileConflictMode = FileConflictMode.Append;
+            options.BatchSize = 10;
+            options.FlushIntervalMs = 1;
+            options.FileBufferSize = 1024;
+        }))
+        .ToArray();
+
+    try
+    {
+        await Task.WhenAll(loggers.Select((logger, index) => Task.Run(() =>
+        {
+            for (var messageIndex = 0; messageIndex < messagesPerLogger; messageIndex++)
+            {
+                logger.Information($"SHARED|{index}|{messageIndex:D4}|{new string('X', (messageIndex % 100) + 1)}");
+            }
+        }))).ConfigureAwait(false);
+    }
+    finally
+    {
+        foreach (var logger in loggers)
+        {
+            logger.Dispose();
+        }
+    }
+
+    var lines = File.ReadAllLines(sharedPath);
+    var messages = lines.Where(line => line.Contains("SHARED|", StringComparison.Ordinal)).ToArray();
+    TestAssert.Equal(loggerCount * messagesPerLogger, messages.Length, "Concurrent Append loggers must keep every entry.");
+    var messageIds = messages.Select(line =>
+    {
+        var fields = line.Substring(line.IndexOf("SHARED|", StringComparison.Ordinal)).Split('|');
+        return fields[1] + "|" + fields[2];
+    });
+    TestAssert.Equal(messages.Length, messageIds.Distinct(StringComparer.Ordinal).Count(), "Concurrent Append loggers must keep every message ID exactly once.");
+    TestAssert.False(File.ReadAllBytes(sharedPath).Contains((byte)0), "Concurrent Append output must not contain NUL bytes.");
+}
+
+static Task SharedMainFileStaysOpenUntilLastLoggerIsDisposedAsync()
+{
+    using var scope = new TestScope();
+    var sharedPath = Path.Combine(scope.CreateSubdirectory("logs"), "shared.log");
+
+    SPLogger CreateLogger(string name) => SPLogFactory.Create(options =>
+    {
+        options.Name = name;
+        options.EnableConsole = false;
+        options.EnableFile = true;
+        options.FilePath = sharedPath;
+        options.FileRollingMode = FileRollingMode.None;
+        options.FileConflictMode = FileConflictMode.Append;
+    });
+
+    using var secondLogger = CreateLogger("Second");
+    using (var firstLogger = CreateLogger("First"))
+    {
+        firstLogger.Information("LIFETIME|FIRST");
+        secondLogger.Information("LIFETIME|SECOND-BEFORE");
+    }
+
+    secondLogger.Information("LIFETIME|SECOND-AFTER");
+    secondLogger.Dispose();
+
+    var content = File.ReadAllText(sharedPath);
+    TestAssert.True(content.Contains("LIFETIME|FIRST", StringComparison.Ordinal), "The first logger entry should be flushed.");
+    TestAssert.True(content.Contains("LIFETIME|SECOND-BEFORE", StringComparison.Ordinal), "The second logger entry should be flushed.");
+    TestAssert.True(content.Contains("LIFETIME|SECOND-AFTER", StringComparison.Ordinal), "The remaining logger must keep writing after the first logger closes.");
+    return Task.CompletedTask;
+}
+
+static Task SharedMainFileRejectsConflictingTargetSettingsAsync()
+{
+    using var scope = new TestScope();
+    var sharedPath = Path.Combine(scope.CreateSubdirectory("logs"), "shared.log");
+
+    using var firstLogger = SPLogFactory.Create(options =>
+    {
+        options.Name = "First";
+        options.EnableConsole = false;
+        options.EnableFile = true;
+        options.FilePath = sharedPath;
+        options.FileRollingMode = FileRollingMode.None;
+        options.MaxFileSizeBytes = 1_024;
+    });
+
+    var rejected = false;
+    try
+    {
+        using var conflictingLogger = SPLogFactory.Create(options =>
+        {
+            options.Name = "Conflicting";
+            options.EnableConsole = false;
+            options.EnableFile = true;
+            options.FilePath = sharedPath;
+            options.FileRollingMode = FileRollingMode.None;
+            options.MaxFileSizeBytes = 2_048;
+        });
+    }
+    catch (InvalidOperationException)
+    {
+        rejected = true;
+    }
+
+    TestAssert.True(rejected, "Different rolling settings must not share one file target.");
+    firstLogger.Information("SETTINGS|FIRST");
+    firstLogger.Dispose();
+    TestAssert.True(File.ReadAllText(sharedPath).Contains("SETTINGS|FIRST", StringComparison.Ordinal), "The original logger should remain usable after a conflicting logger is rejected.");
+    return Task.CompletedTask;
+}
+
+static Task FailedLoggerCreationReleasesSharedMainFileAsync()
+{
+    using var scope = new TestScope();
+    var sharedPath = Path.Combine(scope.CreateSubdirectory("logs"), "shared.log");
+
+    var rejected = false;
+    try
+    {
+        using var invalidLogger = SPLogFactory.Create(options =>
+        {
+            options.Name = "Invalid";
+            options.EnableConsole = false;
+            options.EnableFile = true;
+            options.FilePath = sharedPath;
+            options.FileRollingMode = FileRollingMode.None;
+            options.ErrorFile = new SPLogErrorFileOptions
+            {
+                FilePath = sharedPath,
+                FileRollingMode = FileRollingMode.Daily
+            };
+        });
+    }
+    catch (InvalidOperationException)
+    {
+        rejected = true;
+    }
+
+    TestAssert.True(rejected, "A main file and error file with incompatible rolling settings must be rejected.");
+
+    using (var logger = SPLogFactory.Create(options =>
+           {
+               options.Name = "Valid";
+               options.EnableConsole = false;
+               options.EnableFile = true;
+               options.FilePath = sharedPath;
+               options.FileRollingMode = FileRollingMode.Daily;
+           }))
+    {
+        logger.Information("RELEASED|MAIN");
+    }
+
+    TestAssert.Equal(1, TestHelpers.CountMessageLines(Path.GetDirectoryName(sharedPath)!, "RELEASED|MAIN"), "A failed logger must not leave a shared file target registered.");
     return Task.CompletedTask;
 }
 

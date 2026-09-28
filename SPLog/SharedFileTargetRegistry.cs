@@ -10,8 +10,16 @@ internal static class SharedFileTargetRegistry
 
     public static SharedFileTargetLease Acquire(SPLogErrorFileOptions options, string loggerName)
     {
-        var targetOptions = SharedFileTargetOptions.Create(options, loggerName);
+        return Acquire(SharedFileTargetOptions.Create(options, loggerName));
+    }
 
+    public static SharedFileTargetLease Acquire(SPLogOptions options)
+    {
+        return Acquire(SharedFileTargetOptions.Create(options));
+    }
+
+    private static SharedFileTargetLease Acquire(SharedFileTargetOptions targetOptions)
+    {
         lock (Sync)
         {
             if (Entries.TryGetValue(targetOptions.ResolvedBaseFilePath, out var existing))
@@ -34,8 +42,6 @@ internal static class SharedFileTargetRegistry
 
     internal static void Release(string key)
     {
-        SharedFileTarget? targetToDispose = null;
-
         lock (Sync)
         {
             if (!Entries.TryGetValue(key, out var existing))
@@ -47,11 +53,10 @@ internal static class SharedFileTargetRegistry
             if (existing.ReferenceCount == 0)
             {
                 Entries.Remove(key);
-                targetToDispose = existing.Target;
+                // Keep the registry locked until the old writer closes so a new lease cannot open a second writer.
+                existing.Target.Dispose();
             }
         }
-
-        targetToDispose?.Dispose();
     }
 
     private sealed class SharedFileTargetEntry
@@ -116,6 +121,20 @@ internal sealed class SharedFileTargetOptions
         return new SharedFileTargetOptions
         {
             ResolvedBaseFilePath = FilePathResolver.ResolveLogPath(options.FilePath, loggerName),
+            UseUtcTimestamp = options.UseUtcTimestamp,
+            FileConflictMode = options.FileConflictMode,
+            FileRollingMode = options.FileRollingMode,
+            MaxFileSizeBytes = options.MaxFileSizeBytes,
+            MaxRollingFiles = options.MaxRollingFiles,
+            FileBufferSize = options.FileBufferSize
+        };
+    }
+
+    public static SharedFileTargetOptions Create(SPLogOptions options)
+    {
+        return new SharedFileTargetOptions
+        {
+            ResolvedBaseFilePath = FilePathResolver.ResolveLogPath(options.FilePath, options.Name),
             UseUtcTimestamp = options.UseUtcTimestamp,
             FileConflictMode = options.FileConflictMode,
             FileRollingMode = options.FileRollingMode,

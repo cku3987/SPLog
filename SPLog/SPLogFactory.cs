@@ -36,26 +36,38 @@ public static class SPLogFactory
     {
         var sinks = new List<ILogSink>(3);
 
-        if (options.EnableConsole)
+        try
         {
-            sinks.Add(new ConsoleLogSink(options));
-        }
+            if (options.EnableConsole)
+            {
+                sinks.Add(new ConsoleLogSink(options));
+            }
 
-        if (options.EnableFile)
+            if (options.EnableFile)
+            {
+                sinks.Add(new FileLogSink(options));
+            }
+
+            if (options.ErrorFile is not null)
+            {
+                sinks.Add(new ErrorFileSink(options));
+            }
+
+            if (sinks.Count == 0)
+            {
+                throw new InvalidOperationException("At least one sink must be enabled.");
+            }
+
+            return sinks.Count == 1 ? sinks[0] : new CompositeLogSink(sinks.ToArray());
+        }
+        catch
         {
-            sinks.Add(new FileLogSink(options));
-        }
+            foreach (var sink in sinks)
+            {
+                sink.Dispose();
+            }
 
-        if (options.ErrorFile is not null)
-        {
-            sinks.Add(new ErrorFileSink(options));
+            throw;
         }
-
-        if (sinks.Count == 0)
-        {
-            throw new InvalidOperationException("At least one sink must be enabled.");
-        }
-
-        return sinks.Count == 1 ? sinks[0] : new CompositeLogSink(sinks.ToArray());
     }
 }

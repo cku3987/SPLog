@@ -8,6 +8,7 @@ internal sealed class FileLogSink : ILogSink
     private readonly string _baseDirectory;
     private readonly string _fileNameWithoutExtension;
     private readonly string _fileExtension;
+    private readonly SharedFileTargetLease? _sharedLease;
     private StreamWriter? _writer;
     private FileStream? _stream;
     private string _currentPeriodKey = string.Empty;
@@ -20,11 +21,27 @@ internal sealed class FileLogSink : ILogSink
         _baseDirectory = Path.GetDirectoryName(fullPath) ?? Directory.GetCurrentDirectory();
         _fileNameWithoutExtension = Path.GetFileNameWithoutExtension(fullPath);
         _fileExtension = Path.GetExtension(fullPath);
+        if (options.FileConflictMode == FileConflictMode.Append)
+        {
+            _sharedLease = SharedFileTargetRegistry.Acquire(options);
+        }
     }
 
     public async ValueTask WriteBatchAsync(ReadOnlyMemory<LogEntry> entries, CancellationToken cancellationToken)
     {
         var batch = entries.ToArray();
+        if (_sharedLease is not null)
+        {
+            var lines = new string[batch.Length];
+            for (var i = 0; i < batch.Length; i++)
+            {
+                lines[i] = SPLogFormatter.Format(batch[i], _options);
+            }
+
+            await _sharedLease.Target.WriteBatchAsync(lines, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         for (var i = 0; i < batch.Length; i++)
         {
             var line = SPLogFormatter.Format(batch[i], _options);
@@ -43,6 +60,12 @@ internal sealed class FileLogSink : ILogSink
 
     public void Dispose()
     {
+        if (_sharedLease is not null)
+        {
+            _sharedLease.Dispose();
+            return;
+        }
+
         _writer?.Dispose();
         _stream?.Dispose();
     }
