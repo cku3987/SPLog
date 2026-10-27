@@ -51,7 +51,9 @@ internal sealed class AsyncLogProcessor : IDisposable
 
         try
         {
-            while (await _channel.Reader.WaitToReadAsync(token).ConfigureAwait(false))
+            // Dispose completes the writer to wake an idle reader. Only the
+            // interval delay uses cancellation; sink cancellation is a failure.
+            while (await _channel.Reader.WaitToReadAsync().ConfigureAwait(false))
             {
                 var count = 0;
 
@@ -73,18 +75,25 @@ internal sealed class AsyncLogProcessor : IDisposable
                 {
                     await Task.Delay(_options.FlushIntervalMs, token).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
                     break;
                 }
             }
+
+            // Drain only on normal shutdown. Retrying after a sink failure could
+            // duplicate a partially written batch or hide the original error.
+            await DrainRemainingAsync().ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (Exception ex)
         {
+            // Wake blocked producers and reject future writes before exiting.
+            _channel.Writer.TryComplete(ex);
+            throw;
         }
         finally
         {
-            await DrainRemainingAsync().ConfigureAwait(false);
+            _channel.Writer.TryComplete();
         }
     }
 
@@ -145,8 +154,20 @@ internal sealed class AsyncLogProcessor : IDisposable
 
         _channel.Writer.TryComplete();
         _shutdown.Cancel();
-        _worker.GetAwaiter().GetResult();
-        _sink.Dispose();
-        _shutdown.Dispose();
+        try
+        {
+            _worker.GetAwaiter().GetResult();
+        }
+        finally
+        {
+            try
+            {
+                _sink.Dispose();
+            }
+            finally
+            {
+                _shutdown.Dispose();
+            }
+        }
     }
 }
