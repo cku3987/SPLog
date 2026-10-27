@@ -5,6 +5,13 @@ using SPLog.Tests;
 var tests = new (string Name, Func<Task> Execute)[]
 {
     ("Dispose flushes queued messages", DisposeFlushesQueuedMessagesAsync),
+    ("Sink failure releases waiting producers", () => SinkFailureReleasesProducersAsync(new IOException("write failed"))),
+    ("Sink cancellation is a failure", () => SinkFailureReleasesProducersAsync(new OperationCanceledException("sink canceled"))),
+    ("Drain failure still disposes sink", DrainFailureStillDisposesSinkAsync),
+    ("Worker and cleanup failures are both preserved", () => WorkerAndCleanupFailuresArePreservedAsync(new IOException("write failed"))),
+    ("Worker cancellation and cleanup failure are both preserved", () => WorkerAndCleanupFailuresArePreservedAsync(new OperationCanceledException("sink canceled"))),
+    ("Drain and cleanup failures are both preserved", DrainAndCleanupFailuresArePreservedAsync),
+    ("Cleanup-only failure preserves its identity", CleanupOnlyFailurePreservesIdentityAsync),
     ("BatchSize does not wait for a full batch", BatchSizeDoesNotWaitForFullBatchAsync),
     ("File target is created only after the first written entry", FileTargetIsCreatedOnlyAfterFirstWrittenEntryAsync),
     ("Queue backpressure waits instead of throwing", QueueBackpressureWaitsInsteadOfThrowingAsync),
@@ -779,4 +786,218 @@ static Task UpdateFromJsonFileUpdatesOptionsAsync()
     TestAssert.Equal(FileConflictMode.CreateNew, options.FileConflictMode, "UpdateFromJsonFile should replace enum values.");
     TestAssert.Equal(12, options.BatchSize, "UpdateFromJsonFile should replace BatchSize.");
     return Task.CompletedTask;
+}
+
+
+static async Task SinkFailureReleasesProducersAsync(Exception failure)
+{
+    var sink = new ThrowingLogSink(failure);
+    var processor = new AsyncLogProcessor(new SPLogOptions
+    {
+        BatchSize = 1, QueueCapacity = 1, FlushIntervalMs = 0
+    }, sink);
+    var entry = new LogEntry(DateTime.UtcNow, LogLevel.Information, "Failure", 1, "FAIL");
+    var producers = new List<Task<Exception?>>();
+    try
+    {
+        processor.Enqueue(entry);
+        await sink.FirstWriteStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        processor.Enqueue(entry);
+        using var started = new CountdownEvent(3);
+        for (var i = 0; i < 3; i++)
+        {
+            producers.Add(Task.Run(() =>
+            {
+                started.Signal();
+                return CaptureException(() => processor.Enqueue(entry));
+            }));
+        }
+        TestAssert.True(started.Wait(TimeSpan.FromSeconds(5)), "All producers should start.");
+        await Task.Delay(100);
+        TestAssert.True(producers.All(task => !task.IsCompleted), "Producers should wait while the sink is blocked.");
+        sink.Release();
+        var errors = await Task.WhenAll(producers).WaitAsync(TimeSpan.FromSeconds(5));
+        foreach (var error in errors)
+        {
+            TestAssert.True(IsSinkFailure(error, failure),
+                "Waiting producers should receive the sink failure through channel completion.");
+        }
+        var laterError = CaptureException(() => processor.Enqueue(entry));
+        TestAssert.True(IsSinkFailure(laterError, failure),
+            "Later writes should fail immediately through channel completion.");
+        var disposeError = await Task.Run(() => CaptureException(processor.Dispose)).WaitAsync(TimeSpan.FromSeconds(5));
+        TestAssert.True(ReferenceEquals(failure, disposeError), "Dispose should preserve the original sink failure.");
+        TestAssert.Equal(1, sink.WriteCalls, "A failed sink should not be retried while draining.");
+        TestAssert.Equal(1, sink.DisposeCalls, "Dispose should release a failed sink.");
+        processor.Dispose();
+        TestAssert.Equal(1, sink.DisposeCalls, "Repeated disposal should not dispose the sink twice.");
+    }
+    finally
+    {
+        sink.Release();
+        CaptureException(processor.Dispose);
+        await Task.WhenAll(producers).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+}
+
+static async Task DrainFailureStillDisposesSinkAsync()
+{
+    var failure = new IOException("drain failed");
+    var sink = new ThrowingLogSink(failure, failureCall: 2);
+    var processor = new AsyncLogProcessor(new SPLogOptions
+    {
+        BatchSize = 1, QueueCapacity = 1, FlushIntervalMs = 60_000
+    }, sink);
+    var entry = new LogEntry(DateTime.UtcNow, LogLevel.Information, "DrainFailure", 1, "FAIL");
+    try
+    {
+        processor.Enqueue(entry);
+        await sink.FirstWriteStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        processor.Enqueue(entry);
+        var disposal = Task.Run(() => CaptureException(processor.Dispose));
+        sink.Release();
+        var error = await disposal.WaitAsync(TimeSpan.FromSeconds(5));
+        TestAssert.True(ReferenceEquals(failure, error), "Drain failure should propagate from Dispose.");
+        TestAssert.Equal(2, sink.WriteCalls, "Normal shutdown should attempt to drain the queued entry.");
+        TestAssert.Equal(1, sink.DisposeCalls, "Drain failure must not skip sink disposal.");
+        processor.Dispose();
+        TestAssert.Equal(1, sink.DisposeCalls, "Disposal must remain idempotent after failure.");
+    }
+    finally
+    {
+        sink.Release();
+        CaptureException(processor.Dispose);
+    }
+}
+
+static Exception? CaptureException(Action action)
+{
+    try
+    {
+        action();
+        return null;
+    }
+    catch (Exception ex)
+    {
+        return ex;
+    }
+}
+
+
+static bool IsSinkFailure(Exception? error, Exception failure)
+{
+    // Channels surface cancellation as cancellation rather than ChannelClosedException.
+    return failure is OperationCanceledException
+        ? error is OperationCanceledException
+        : error is System.Threading.Channels.ChannelClosedException && ReferenceEquals(error.InnerException, failure);
+}
+
+
+static async Task WorkerAndCleanupFailuresArePreservedAsync(Exception workerFailure)
+{
+    var cleanupFailure = new IOException("cleanup failed");
+    var sink = new ThrowingLogSink(workerFailure, disposeFailure: cleanupFailure);
+    var processor = new AsyncLogProcessor(new SPLogOptions
+    {
+        BatchSize = 1, QueueCapacity = 1, FlushIntervalMs = 0
+    }, sink);
+    try
+    {
+        processor.Enqueue(new LogEntry(DateTime.UtcNow, LogLevel.Information, "DoubleFailure", 1, "FAIL"));
+        await sink.FirstWriteStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        sink.Release();
+        var error = await Task.Run(() => CaptureException(processor.Dispose)).WaitAsync(TimeSpan.FromSeconds(5));
+        AssertCombinedFailure(error, workerFailure, cleanupFailure);
+        TestAssert.Equal(1, sink.WriteCalls, "The failed batch must not be retried.");
+        AssertCleanupCompleted(processor, sink);
+    }
+    finally
+    {
+        sink.Release();
+        CaptureException(processor.Dispose);
+    }
+}
+
+static async Task DrainAndCleanupFailuresArePreservedAsync()
+{
+    var workerFailure = new IOException("drain failed");
+    var cleanupFailure = new IOException("cleanup failed");
+    var sink = new ThrowingLogSink(workerFailure, failureCall: 2, disposeFailure: cleanupFailure);
+    var processor = new AsyncLogProcessor(new SPLogOptions
+    {
+        BatchSize = 1, QueueCapacity = 1, FlushIntervalMs = 60_000
+    }, sink);
+    var shutdown = (CancellationTokenSource)typeof(AsyncLogProcessor)
+        .GetField("_shutdown", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+        .GetValue(processor)!;
+    var entry = new LogEntry(DateTime.UtcNow, LogLevel.Information, "DrainDoubleFailure", 1, "FAIL");
+    try
+    {
+        processor.Enqueue(entry);
+        await sink.FirstWriteStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        processor.Enqueue(entry);
+        var disposal = Task.Run(() => CaptureException(processor.Dispose));
+        TestAssert.True(SpinWait.SpinUntil(() => shutdown.IsCancellationRequested, TimeSpan.FromSeconds(5)),
+            "Disposal should start before releasing the first write.");
+        sink.Release();
+        var error = await disposal.WaitAsync(TimeSpan.FromSeconds(5));
+        AssertCombinedFailure(error, workerFailure, cleanupFailure);
+        TestAssert.Equal(2, sink.WriteCalls, "The second write must fail while draining, without retry.");
+        AssertCleanupCompleted(processor, sink);
+    }
+    finally
+    {
+        sink.Release();
+        CaptureException(processor.Dispose);
+    }
+}
+
+static async Task CleanupOnlyFailurePreservesIdentityAsync()
+{
+    var cleanupFailure = new IOException("cleanup only failed");
+    var sink = new ThrowingLogSink(new IOException("unused"), failureCall: int.MaxValue,
+        disposeFailure: cleanupFailure);
+    var processor = new AsyncLogProcessor(new SPLogOptions
+    {
+        BatchSize = 1, QueueCapacity = 1, FlushIntervalMs = 0
+    }, sink);
+    try
+    {
+        processor.Enqueue(new LogEntry(DateTime.UtcNow, LogLevel.Information, "CleanupOnly", 1, "OK"));
+        await sink.FirstWriteStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        sink.Release();
+        var error = await Task.Run(() => CaptureException(processor.Dispose)).WaitAsync(TimeSpan.FromSeconds(5));
+        TestAssert.True(ReferenceEquals(error, cleanupFailure),
+            "A cleanup-only failure must propagate the original exception without wrapping.");
+        TestAssert.Equal(1, sink.WriteCalls, "The accepted entry should be written before cleanup fails.");
+        AssertCleanupCompleted(processor, sink);
+    }
+    finally
+    {
+        sink.Release();
+        CaptureException(processor.Dispose);
+    }
+}
+
+static void AssertCombinedFailure(Exception? error, Exception workerFailure, Exception cleanupFailure)
+{
+    TestAssert.True(error is AggregateException, "Both failures must be exposed together.");
+    var failures = ((AggregateException)error!).InnerExceptions;
+    TestAssert.Equal(2, failures.Count, "The aggregate should contain exactly the worker and cleanup failures.");
+    TestAssert.True(ReferenceEquals(workerFailure, failures[0]), "Keep the original worker failure first.");
+    TestAssert.True(ReferenceEquals(cleanupFailure, failures[1]), "Keep the original cleanup failure second.");
+    TestAssert.True(!string.IsNullOrEmpty(failures[0].StackTrace) && !string.IsNullOrEmpty(failures[1].StackTrace),
+        "Both original failure stack traces should be available.");
+}
+
+static void AssertCleanupCompleted(AsyncLogProcessor processor, ThrowingLogSink sink)
+{
+    TestAssert.Equal(1, sink.DisposeCalls, "Sink cleanup should be attempted exactly once.");
+    var shutdown = (CancellationTokenSource)typeof(AsyncLogProcessor)
+        .GetField("_shutdown", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+        .GetValue(processor)!;
+    TestAssert.True(CaptureException(() => { _ = shutdown.Token; }) is ObjectDisposedException,
+        "Cancellation resources should be disposed even when worker and sink cleanup fail.");
+    TestAssert.True(CaptureException(processor.Dispose) is null, "Repeated disposal should be a no-op.");
+    TestAssert.Equal(1, sink.DisposeCalls, "Repeated disposal must not retry failed cleanup.");
 }

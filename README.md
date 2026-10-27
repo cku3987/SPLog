@@ -48,6 +48,25 @@ catch (Exception ex)
 }
 ```
 
+## Asynchronous failures and shutdown
+
+A full queue applies backpressure while the writer is healthy. If a sink throws,
+the processor stops and completes the queue with that failure. Waiting and future
+logging calls fail instead of waiting for a worker that has exited. Channels
+surface ordinary failures as `ChannelClosedException` with the sink exception as
+`InnerException`; sink cancellation is surfaced as `OperationCanceledException`.
+An entry accepted before failure is not a guarantee of persistence.
+
+Normal disposal still drains queued entries. After a sink failure, queued entries
+are not retried: the failed batch may already have been partially written.
+`Dispose()` preserves a single worker or cleanup exception without wrapping it.
+If the worker (including shutdown draining) and sink cleanup both fail, it throws
+an `AggregateException` containing the original worker exception first and the
+cleanup exception second, with both original stack traces retained. Sink cleanup
+is attempted once, shutdown resources are disposed even when cleanup throws,
+and repeated disposal is a no-op. A sink that never completes its
+write can still block shutdown; this policy handles writes that throw.
+
 ## Shared Error File
 
 Each logger can keep its own main file while `Error` and `Critical` messages are also written to one shared error file:

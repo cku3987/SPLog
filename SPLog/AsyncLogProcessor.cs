@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 
 namespace SPLog;
@@ -51,7 +52,9 @@ internal sealed class AsyncLogProcessor : IDisposable
 
         try
         {
-            while (await _channel.Reader.WaitToReadAsync(token).ConfigureAwait(false))
+            // Dispose completes the writer to wake an idle reader. Only the
+            // interval delay uses cancellation; sink cancellation is a failure.
+            while (await _channel.Reader.WaitToReadAsync().ConfigureAwait(false))
             {
                 var count = 0;
 
@@ -73,18 +76,25 @@ internal sealed class AsyncLogProcessor : IDisposable
                 {
                     await Task.Delay(_options.FlushIntervalMs, token).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
                     break;
                 }
             }
+
+            // Drain only on normal shutdown. Retrying after a sink failure could
+            // duplicate a partially written batch or hide the original error.
+            await DrainRemainingAsync().ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (Exception ex)
         {
+            // Wake blocked producers and reject future writes before exiting.
+            _channel.Writer.TryComplete(ex);
+            throw;
         }
         finally
         {
-            await DrainRemainingAsync().ConfigureAwait(false);
+            _channel.Writer.TryComplete();
         }
     }
 
@@ -145,8 +155,33 @@ internal sealed class AsyncLogProcessor : IDisposable
 
         _channel.Writer.TryComplete();
         _shutdown.Cancel();
-        _worker.GetAwaiter().GetResult();
-        _sink.Dispose();
-        _shutdown.Dispose();
+        Exception? workerFailure = null;
+        try
+        {
+            _worker.GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            workerFailure = ex;
+        }
+
+        try
+        {
+            _sink.Dispose();
+        }
+        catch (Exception cleanupFailure) when (workerFailure is not null)
+        {
+            throw new AggregateException(
+                "The logging worker and sink cleanup both failed.", workerFailure, cleanupFailure);
+        }
+        finally
+        {
+            _shutdown.Dispose();
+        }
+
+        if (workerFailure is not null)
+        {
+            ExceptionDispatchInfo.Capture(workerFailure).Throw();
+        }
     }
 }
