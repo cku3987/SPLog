@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 
 namespace SPLog;
@@ -154,20 +155,33 @@ internal sealed class AsyncLogProcessor : IDisposable
 
         _channel.Writer.TryComplete();
         _shutdown.Cancel();
+        Exception? workerFailure = null;
         try
         {
             _worker.GetAwaiter().GetResult();
         }
+        catch (Exception ex)
+        {
+            workerFailure = ex;
+        }
+
+        try
+        {
+            _sink.Dispose();
+        }
+        catch (Exception cleanupFailure) when (workerFailure is not null)
+        {
+            throw new AggregateException(
+                "The logging worker and sink cleanup both failed.", workerFailure, cleanupFailure);
+        }
         finally
         {
-            try
-            {
-                _sink.Dispose();
-            }
-            finally
-            {
-                _shutdown.Dispose();
-            }
+            _shutdown.Dispose();
+        }
+
+        if (workerFailure is not null)
+        {
+            ExceptionDispatchInfo.Capture(workerFailure).Throw();
         }
     }
 }

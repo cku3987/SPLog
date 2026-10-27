@@ -10,13 +10,15 @@ internal sealed class ThrowingLogSink : ILogSink
     private int _writeCalls;
     private int _disposeCalls;
 
-    public ThrowingLogSink(Exception failure, int failureCall = 1)
+    public ThrowingLogSink(Exception failure, int failureCall = 1, Exception? disposeFailure = null)
     {
         Failure = failure;
+        DisposeFailure = disposeFailure;
         _failureCall = failureCall;
     }
 
     public Exception Failure { get; }
+    public Exception? DisposeFailure { get; }
     public Task FirstWriteStarted => _started.Task;
     public int WriteCalls => Volatile.Read(ref _writeCalls);
     public int DisposeCalls => Volatile.Read(ref _disposeCalls);
@@ -37,5 +39,12 @@ internal sealed class ThrowingLogSink : ILogSink
     }
 
     public void Release() => _release.TrySetResult(true);
-    public void Dispose() => Interlocked.Increment(ref _disposeCalls);
+    public void Dispose()
+    {
+        Interlocked.Increment(ref _disposeCalls);
+        if (DisposeFailure is not null)
+        {
+            throw DisposeFailure;
+        }
+    }
 }

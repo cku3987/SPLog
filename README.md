@@ -59,8 +59,12 @@ An entry accepted before failure is not a guarantee of persistence.
 
 Normal disposal still drains queued entries. After a sink failure, queued entries
 are not retried: the failed batch may already have been partially written.
-`Dispose()` reports worker failures while still disposing the sink and shutdown
-resources, and repeated disposal is a no-op. A sink that never completes its
+`Dispose()` preserves a single worker or cleanup exception without wrapping it.
+If the worker (including shutdown draining) and sink cleanup both fail, it throws
+an `AggregateException` containing the original worker exception first and the
+cleanup exception second, with both original stack traces retained. Sink cleanup
+is attempted once, shutdown resources are disposed even when cleanup throws,
+and repeated disposal is a no-op. A sink that never completes its
 write can still block shutdown; this policy handles writes that throw.
 
 ## Shared Error File
