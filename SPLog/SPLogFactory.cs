@@ -60,11 +60,16 @@ public static class SPLogFactory
 
             return sinks.Count == 1 ? sinks[0] : new CompositeLogSink(sinks.ToArray());
         }
-        catch
+        catch (Exception creationFailure)
         {
-            foreach (var sink in sinks)
+            try
             {
-                sink.Dispose();
+                CompositeLogSink.DisposeAll(sinks);
+            }
+            catch (Exception cleanupFailure)
+            {
+                throw new AggregateException(
+                    "Logger creation and sink cleanup both failed.", creationFailure, cleanupFailure);
             }
 
             throw;

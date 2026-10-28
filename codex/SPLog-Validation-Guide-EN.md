@@ -20,11 +20,17 @@ dotnet build SPLog.sln -c Release -m:1
 ### 2. Deterministic validation
 
 ```powershell
-dotnet run --project SPLog.Tests\SPLog.Tests.csproj -c Release --no-build
+dotnet run --project SPLog.Tests\SPLog.Tests.csproj -c Release -f net8.0 --no-build
+dotnet run --project SPLog.Tests\SPLog.Tests.csproj -c Release -f net472 --no-build
 ```
 
 Current coverage:
 
+- The same 31 tests run on .NET 8 and the .NET Framework 4.7.2 target (Windows).
+- Sink failure releases blocked producers and rejects later writes.
+- Worker, drain, and multiple sink cleanup failures retain their causes.
+- Composite cleanup releases later shared file leases even if an earlier sink fails.
+- Repeated cleanup is a no-op, including after failures.
 - Dispose flushes queued entries
 - `BatchSize` does not require a full batch
 - `MinimumLevel` filtering
@@ -47,6 +53,32 @@ This confirms:
 - final file line count matches produced message count
 - summary and metrics files are written
 - multiple logger scenarios can run together when configured
+
+## Package Validation and Publishing
+
+The test and net472 verification projects normally reference the local SPLog project.
+Set `SPLogPackageVersion` to verify the actual package instead, without editing source references:
+
+```powershell
+dotnet pack SPLog/SPLog.csproj -c Release --no-build -o artifacts/packages
+$source = Join-Path $PWD 'artifacts/packages'
+dotnet run --project SPLog.Tests -c Release -f net8.0 -p:SPLogPackageVersion=1.2.4 "-p:RestoreAdditionalProjectSources=$source"
+dotnet run --project SPLog.Tests -c Release -f net472 -p:SPLogPackageVersion=1.2.4 "-p:RestoreAdditionalProjectSources=$source"
+dotnet run --project SPLog.Net472.Verify -c Release -p:SPLogPackageVersion=1.2.4 "-p:RestoreAdditionalProjectSources=$source"
+```
+
+Use an isolated `RestorePackagesPath` when repacking an unpublished version locally; NuGet caches packages by version. Rebuild normally without these properties afterwards to restore project references.
+
+GitHub `validate.yml` checks source and package builds on Windows for pushes and PRs.
+`publish.yml` is dispatched manually from `main` with an existing version tag. It rejects version mismatches and tags outside main, reruns validation, then publishes the tested package through NuGet Trusted Publishing. No permanent API key is stored.
+
+One-time setup on NuGet.org: trust owner `cku3987`, repository `SPLog`, workflow filename `publish.yml`, environment `nuget`, and only new versions of package `SPLog`. Set the GitHub repository variable `NUGET_USER` to the owning NuGet profile name (not email). Restrict the GitHub `nuget` environment to `main`.
+
+Release sequence: update versions and release notes, commit and push, wait for validation, create the matching tag, dispatch `publish.yml` from main, verify the published package, then publish the GitHub release. Publishing is a deliberate action, not automatic on every push.
+
+Reference: https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing
+
+## Stress Runner Configuration
 
 If you launch `SPLog.StressRunner` from Visual Studio without `--config`, it now tries to auto-load:
 

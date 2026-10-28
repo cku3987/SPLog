@@ -6,21 +6,25 @@ internal static class Program
 {
     private static int Main()
     {
-        var outputRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "artifacts", "net472-verify");
+        var outputRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "artifacts", "net472-verify", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(outputRoot);
 
         var logDirectory = Path.Combine(outputRoot, "logs");
 
-        using (var rootLogger = SPLogFactory.Create(options =>
-               {
-                   options.Name = "VerifyApp";
-                   options.EnableConsole = false;
-                   options.EnableFile = true;
-                   options.FilePath = logDirectory;
-                   options.FileRollingMode = FileRollingMode.None;
-                   options.FileConflictMode = FileConflictMode.Append;
-                   options.IncludeSequenceNumber = true;
-               }))
+        var options = new SPLogOptions
+        {
+            Name = "VerifyApp",
+            EnableConsole = false,
+            EnableFile = true,
+            FilePath = logDirectory,
+            FileRollingMode = FileRollingMode.None,
+            FileConflictMode = FileConflictMode.Append,
+            IncludeSequenceNumber = true
+        };
+        var configPath = Path.Combine(outputRoot, "splog.json");
+        SPLogConfiguration.SaveToJsonFile(options, configPath);
+
+        using (var rootLogger = SPLogFactory.CreateFromJsonFile(configPath))
         {
             var networkLogger = rootLogger.CreateCategory("Network");
 

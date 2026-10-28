@@ -2,13 +2,24 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFrameworks>net8.0;net472</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(SPLogPackageVersion)' == ''">
     <ProjectReference Include="..\SPLog\SPLog.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(SPLogPackageVersion)' != ''">
+    <PackageReference Include="SPLog" Version="$(SPLogPackageVersion)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

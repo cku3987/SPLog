@@ -12,6 +12,9 @@ var tests = new (string Name, Func<Task> Execute)[]
     ("Worker cancellation and cleanup failure are both preserved", () => WorkerAndCleanupFailuresArePreservedAsync(new OperationCanceledException("sink canceled"))),
     ("Drain and cleanup failures are both preserved", DrainAndCleanupFailuresArePreservedAsync),
     ("Cleanup-only failure preserves its identity", CleanupOnlyFailurePreservesIdentityAsync),
+    ("Composite cleanup continues after a single failure", CompositeCleanupContinuesAsync),
+    ("Composite cleanup preserves all failures", CompositeCleanupPreservesAllFailuresAsync),
+    ("Worker and multiple sink cleanup failures are preserved", WorkerAndMultipleCleanupFailuresAsync),
     ("BatchSize does not wait for a full batch", BatchSizeDoesNotWaitForFullBatchAsync),
     ("File target is created only after the first written entry", FileTargetIsCreatedOnlyAfterFirstWrittenEntryAsync),
     ("Queue backpressure waits instead of throwing", QueueBackpressureWaitsInsteadOfThrowingAsync),
@@ -1000,4 +1003,93 @@ static void AssertCleanupCompleted(AsyncLogProcessor processor, ThrowingLogSink 
         "Cancellation resources should be disposed even when worker and sink cleanup fail.");
     TestAssert.True(CaptureException(processor.Dispose) is null, "Repeated disposal should be a no-op.");
     TestAssert.Equal(1, sink.DisposeCalls, "Repeated disposal must not retry failed cleanup.");
+}
+
+static Task CompositeCleanupContinuesAsync()
+{
+    using var scope = new TestScope();
+    var failure = new IOException("first sink cleanup failed");
+    var first = new ThrowingLogSink(new IOException("unused"), disposeFailure: failure);
+    var last = new ThrowingLogSink(new IOException("unused"));
+    var options = new SPLogOptions
+    {
+        Name = "Cleanup", FilePath = scope.RootDirectory,
+        FileRollingMode = FileRollingMode.None, FileBufferSize = 4096
+    };
+    var sharedFile = new FileLogSink(options);
+    var composite = new CompositeLogSink(new ILogSink[] { first, sharedFile, last });
+    try
+    {
+        var error = CaptureException(composite.Dispose);
+        TestAssert.True(ReferenceEquals(failure, error), "A single cleanup failure must retain its identity.");
+        TestAssert.True(!string.IsNullOrEmpty(error!.StackTrace), "The original stack trace must be retained.");
+        TestAssert.Equal(1, first.DisposeCalls, "First sink cleanup should be attempted once.");
+        TestAssert.Equal(1, last.DisposeCalls, "Cleanup must reach the last sink after an earlier failure.");
+        TestAssert.True(CaptureException(composite.Dispose) is null, "Repeated cleanup should be a no-op.");
+        TestAssert.Equal(1, last.DisposeCalls, "Repeated cleanup must not dispose sinks again.");
+
+        // Different settings are accepted only if the previous shared lease was released.
+        options.FileBufferSize = 8192;
+        using var replacement = new FileLogSink(options);
+    }
+    finally
+    {
+        sharedFile.Dispose();
+    }
+
+    return Task.CompletedTask;
+}
+
+static Task CompositeCleanupPreservesAllFailuresAsync()
+{
+    var firstFailure = new IOException("first cleanup failed");
+    var secondFailure = new InvalidOperationException("second cleanup failed");
+    var first = new ThrowingLogSink(new IOException("unused"), disposeFailure: firstFailure);
+    var second = new ThrowingLogSink(new IOException("unused"), disposeFailure: secondFailure);
+    var last = new ThrowingLogSink(new IOException("unused"));
+    var composite = new CompositeLogSink(new ILogSink[] { first, second, last });
+    var error = CaptureException(composite.Dispose);
+    AssertCombinedFailure(error, firstFailure, secondFailure);
+    TestAssert.Equal(1, first.DisposeCalls, "First sink should be disposed once.");
+    TestAssert.Equal(1, second.DisposeCalls, "Second sink should be disposed once.");
+    TestAssert.Equal(1, last.DisposeCalls, "Healthy sinks must still be disposed.");
+    TestAssert.True(CaptureException(composite.Dispose) is null, "Failed composite disposal must be idempotent.");
+    TestAssert.Equal(1, first.DisposeCalls, "Failed cleanup must not be retried.");
+    TestAssert.Equal(1, second.DisposeCalls, "Failed cleanup must not be retried.");
+    TestAssert.Equal(1, last.DisposeCalls, "Healthy cleanup must not be repeated.");
+    return Task.CompletedTask;
+}
+
+static async Task WorkerAndMultipleCleanupFailuresAsync()
+{
+    var workerFailure = new IOException("worker failed");
+    var firstCleanup = new IOException("first cleanup failed");
+    var secondCleanup = new IOException("second cleanup failed");
+    var first = new ThrowingLogSink(workerFailure, disposeFailure: firstCleanup);
+    var second = new ThrowingLogSink(new IOException("unused"), disposeFailure: secondCleanup);
+    var composite = new CompositeLogSink(new ILogSink[] { first, second });
+    var processor = new AsyncLogProcessor(new SPLogOptions
+    {
+        BatchSize = 1, QueueCapacity = 1, FlushIntervalMs = 0
+    }, composite);
+    try
+    {
+        processor.Enqueue(new LogEntry(DateTime.UtcNow, LogLevel.Information, "CompositeFailure", 1, "FAIL"));
+        await first.FirstWriteStarted.WaitAsync(TimeSpan.FromSeconds(5));
+        first.Release();
+        var error = await Task.Run(() => CaptureException(processor.Dispose)).WaitAsync(TimeSpan.FromSeconds(5));
+        TestAssert.True(error is AggregateException, "Worker and cleanup failures must be exposed together.");
+        var outer = ((AggregateException)error!).InnerExceptions;
+        TestAssert.Equal(2, outer.Count, "Preserve the worker/cleanup exception structure.");
+        TestAssert.True(ReferenceEquals(workerFailure, outer[0]), "Worker failure must remain first.");
+        AssertCombinedFailure(outer[1], firstCleanup, secondCleanup);
+        AssertCleanupCompleted(processor, first);
+        TestAssert.Equal(1, second.DisposeCalls, "All sinks must be cleaned up after worker failure.");
+        TestAssert.Equal(0, second.WriteCalls, "A failed batch must not continue or be retried.");
+    }
+    finally
+    {
+        first.Release();
+        CaptureException(processor.Dispose);
+    }
 }

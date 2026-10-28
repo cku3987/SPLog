@@ -113,6 +113,18 @@
   <p>Recommended pattern with external config:</p>
   <pre><code><span class="kw">using</span> <span class="kw">var</span> coreLog = SPLogFactory.CreateFromJsonFile(<span class="str">"config/splog.core.json"</span>);</code></pre>
 
+  <h2>Logging Failures and Shutdown</h2>
+  <p>This is different from calling <code>logger.Error(ex, message)</code> to record an application exception. A logging failure means SPLog itself cannot write, for example because the disk is full or access is denied.</p>
+  <ul>
+    <li>A full queue waits while the writer is healthy. If writing throws, the worker stops and waiting/future logging calls fail instead of waiting indefinitely.</li>
+    <li>Ordinary sink failures surface as <code>ChannelClosedException</code> with the original cause in <code>InnerException</code>. Sink cancellation surfaces as <code>OperationCanceledException</code>. A returned logging call means queued, not guaranteed persisted.</li>
+    <li><code>Dispose()</code> drains on normal shutdown. After a write failure, it does not retry a potentially partially written batch. It still attempts cleanup of every output target even if an earlier cleanup fails.</li>
+    <li>One failure is rethrown unchanged. Multiple failures use <code>AggregateException</code>, with the worker first and cleanup errors second. Multiple target cleanup errors form a nested aggregate in target order; use <code>Flatten().InnerExceptions</code> to inspect all causes. Repeated disposal is a no-op.</li>
+    <li>Stop producers before disposing the root logger. Handle exceptions around logging calls and at the owning scope's shutdown boundary: <code>using</code> also calls <code>Dispose()</code> and can throw.</li>
+    <li>Report failures through a separate fallback, never the same failed logger. After fixing the cause, dispose the failed logger (handling its exception), then create a new one.</li>
+    <li>No automatic retry, recovery, or persistence guarantee after failure is provided. A write that never completes can still block shutdown; this handles writes that throw.</li>
+    <li>For .NET Framework, update dependencies through NuGet and regenerate the executable's binding redirects. Do not copy only SPLog.dll or guess assembly versions.</li>
+  </ul>
   <h2>Exception Logging</h2>
   <pre><code><span class="kw">try</span>
 {

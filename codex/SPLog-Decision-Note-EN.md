@@ -68,6 +68,9 @@ var socketLog = networkLog.CreateCategory("Socket");
 - Scoped loggers should usually use `using var`.
 - Category loggers are lightweight handles that share the root logger's queue and writer.
 - In a category setup, the root logger is the one that should normally be disposed at shutdown.
+- Since 1.2.3, a sink failure completes the queue and releases blocked producers with an error; failed batches are not retried.
+- Since 1.2.4, composite cleanup attempts every sink once, preserving single failures or aggregating multiple failures. Creation rollback also attempts every acquired sink.
+- Dispose can throw. Stop producers before shutdown, handle errors at the owner boundary, and report failures through an independent fallback.
 
 ## Configuration rules
 

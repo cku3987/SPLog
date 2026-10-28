@@ -1,0 +1,44 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build all targets
+        run: dotnet build SPLog.sln -c Release -m:1
+      - name: Test .NET 8
+        run: dotnet run --project SPLog.Tests -c Release -f net8.0 --no-build
+      - name: Test .NET Framework 4.7.2 target
+        run: dotnet run --project SPLog.Tests -c Release -f net472 --no-build
+      - name: Verify .NET Framework JSON configuration and file output
+        run: dotnet run --project SPLog.Net472.Verify -c Release --no-build
+      - name: Concurrent logging smoke test
+        run: dotnet run --project SPLog.StressRunner -c Release --no-build -- --duration 00:00:05 --status 00:00:02 --producers 2 --payload 32 --burst 20
+      - name: Build NuGet package
+        run: dotnet pack SPLog/SPLog.csproj -c Release --no-build -o artifacts/packages
+      - name: Verify packaged assemblies on both runtimes
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content SPLog/SPLog.csproj
+          $version = $project.Project.PropertyGroup.PackageVersion | Where-Object { $_ }
+          $source = Join-Path $PWD 'artifacts/packages'
+          foreach ($framework in @('net8.0', 'net472')) {
+            dotnet run --project SPLog.Tests -c Release -f $framework -p:SPLogPackageVersion=$version -p:RestoreAdditionalProjectSources=$source
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          dotnet run --project SPLog.Net472.Verify -c Release -p:SPLogPackageVersion=$version -p:RestoreAdditionalProjectSources=$source
+          exit $LASTEXITCODE

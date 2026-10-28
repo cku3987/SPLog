@@ -127,6 +127,20 @@ Recommended pattern with external config:
 using var coreLog = SPLogFactory.CreateFromJsonFile("config/splog.core.json");
 ```
 
+## Logging Failures and Shutdown
+
+This is different from logging an application exception with `logger.Error(ex, message)`.
+A logging failure means SPLog itself could not write, for example because the disk is full or access is denied.
+
+- A full queue waits for space while the writer is healthy. If writing throws, the worker stops and waiting/future logging calls fail instead of waiting indefinitely.
+- Ordinary sink failures surface from logging calls as `ChannelClosedException` with the original cause in `InnerException`. Sink cancellation surfaces as `OperationCanceledException`. A call that already returned only means the entry was queued, not safely persisted.
+- `Dispose()` drains remaining entries on normal shutdown. After a write failure, it does not retry a potentially partially written batch. It still attempts cleanup of every output target, even if an earlier target's cleanup fails.
+- One worker or cleanup failure is rethrown unchanged. Simultaneous failures use `AggregateException`: the worker failure comes first, followed by cleanup failures. Multiple target cleanup errors form a nested aggregate in target order; use `Flatten().InnerExceptions` to inspect every cause. Repeated disposal is a no-op.
+- Stop the application's logging producers before disposing the root logger. Handle errors both around logging calls and at the owning scope's shutdown boundary, because `using` also calls `Dispose()` and can throw.
+- Report SPLog failures through a separate fallback such as a UI notification, standard error, or another independent logging system. Do not call the same failed logger from that error handler. To resume after fixing the cause, dispose the failed logger (handling its exception), then create a new one.
+- There is no automatic retry or recovery, and no guarantee of persistence after a sink failure. A write that never completes can still block shutdown; this change addresses writes that throw.
+- .NET Framework applications should use NuGet to resolve dependencies and regenerate the executable's binding redirects after a package update. Do not copy only SPLog.dll or guess dependency assembly versions.
+
 ## Exception Logging
 
 ```csharp

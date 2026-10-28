@@ -4,6 +4,8 @@ SPLog is a lightweight logging DLL focused on performance, simplicity, and pract
 
 GitHub repository: <https://github.com/cku3987/SPLog>
 
+Current version: `1.2.4` ([NuGet](https://www.nuget.org/packages/SPLog/1.2.4)).
+
 Targets:
 
 - `net8.0`
@@ -66,6 +68,15 @@ cleanup exception second, with both original stack traces retained. Sink cleanup
 is attempted once, shutdown resources are disposed even when cleanup throws,
 and repeated disposal is a no-op. A sink that never completes its
 write can still block shutdown; this policy handles writes that throw.
+
+With multiple sinks (console, main file, error file), cleanup attempts every sink
+even if an earlier cleanup fails. One cleanup failure is rethrown unchanged;
+multiple cleanup failures are aggregated in sink order. When both the worker and
+multiple cleanups fail, the outer aggregate contains the worker first and the
+cleanup aggregate second. Use `AggregateException.Flatten()` to inspect all causes.
+Failed logger creation also cleans up every sink already acquired, preserving the
+creation error alongside any cleanup failures. No automatic recovery is attempted.
+Report logging failures through a separate fallback, not the same failed logger.
 
 ## Shared Error File
 
@@ -195,7 +206,8 @@ Recommended commands:
 
 ```powershell
 dotnet build SPLog.sln -c Release -m:1
-dotnet run --project SPLog.Tests\SPLog.Tests.csproj -c Release --no-build
+dotnet run --project SPLog.Tests\SPLog.Tests.csproj -c Release -f net8.0 --no-build
+dotnet run --project SPLog.Tests\SPLog.Tests.csproj -c Release -f net472 --no-build
 dotnet run --project SPLog.StressRunner\SPLog.StressRunner.csproj -c Release -- --config codex\SPLog-StressRunner.sample.json
 dotnet run --project SPLog.Net472.Verify\SPLog.Net472.Verify.csproj -c Release
 ```

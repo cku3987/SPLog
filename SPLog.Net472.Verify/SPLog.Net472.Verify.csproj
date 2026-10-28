@@ -14,8 +14,12 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(SPLogPackageVersion)' == ''">
     <ProjectReference Include="..\SPLog\SPLog.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(SPLogPackageVersion)' != ''">
+    <PackageReference Include="SPLog" Version="$(SPLogPackageVersion)" />
   </ItemGroup>
 
 </Project>

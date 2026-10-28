@@ -1,0 +1,95 @@
+name: Publish NuGet
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag, for example v1.2.4'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nuget-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'cku3987/SPLog' && github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    timeout-minutes: 20
+    environment: nuget
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      NUGET_USER: ${{ vars.NUGET_USER }}
+    steps:
+      - name: Validate release input
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Expected a stable version tag such as v1.2.4.' }
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_USER)) { throw 'Set the NUGET_USER repository variable to your NuGet profile name.' }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify tag, source, and version agreement
+        id: version
+        shell: pwsh
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'Only release commits from main may be published.' }
+          $version = $env:RELEASE_TAG.Substring(1)
+          [xml]$project = Get-Content SPLog/SPLog.csproj
+          foreach ($field in @('Version', 'PackageVersion', 'InformationalVersion')) {
+            $actual = $project.Project.PropertyGroup.$field | Where-Object { $_ }
+            if ($actual -ne $version) { throw "$field does not match the release tag." }
+          }
+          foreach ($field in @('AssemblyVersion', 'FileVersion')) {
+            $actual = $project.Project.PropertyGroup.$field | Where-Object { $_ }
+            if ($actual -ne "$version.0") { throw "$field does not match the release tag." }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build release
+        run: dotnet build SPLog.sln -c Release -m:1
+      - name: Test .NET 8
+        run: dotnet run --project SPLog.Tests -c Release -f net8.0 --no-build
+      - name: Test .NET Framework 4.7.2 target
+        run: dotnet run --project SPLog.Tests -c Release -f net472 --no-build
+      - name: Verify .NET Framework JSON configuration
+        run: dotnet run --project SPLog.Net472.Verify -c Release --no-build
+      - name: Concurrent logging smoke test
+        run: dotnet run --project SPLog.StressRunner -c Release --no-build -- --duration 00:00:05 --status 00:00:02 --producers 2 --payload 32 --burst 20
+      - name: Pack
+        run: dotnet pack SPLog/SPLog.csproj -c Release --no-build -o artifacts/packages
+      - name: Test the exact package to be published
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $source = Join-Path $PWD 'artifacts/packages'
+          foreach ($framework in @('net8.0', 'net472')) {
+            dotnet run --project SPLog.Tests -c Release -f $framework -p:SPLogPackageVersion=$env:PACKAGE_VERSION -p:RestoreAdditionalProjectSources=$source
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          dotnet run --project SPLog.Net472.Verify -c Release -p:SPLogPackageVersion=$env:PACKAGE_VERSION -p:RestoreAdditionalProjectSources=$source
+          exit $LASTEXITCODE
+      - name: Exchange GitHub identity for a short-lived NuGet key
+        uses: NuGet/login@ebc737b6fc418a6ca0073cf116ec8dc156d8b81e # v1
+        id: login
+        with:
+          user: ${{ vars.NUGET_USER }}
+      - name: Publish package
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+          PACKAGE_VERSION: ${{ steps.version.outputs.version }}
+        run: dotnet nuget push "artifacts/packages/SPLog.$env:PACKAGE_VERSION.nupkg" --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json
