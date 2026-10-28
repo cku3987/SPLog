@@ -115,7 +115,7 @@
 
   <h2>File Retention and Path Casing</h2>
   <p>Since 1.2.5, retention recognizes only the exact base name, extension, configured date/hour suffix, and optional positive rolling number (<code>_001</code>, <code>_002</code>, ... <code>_1000</code>). Similar prefixes such as <code>AppAudit</code>, malformed suffixes, and backup files are preserved. The current writer's open file occupies one retention slot and is not selected by its cleanup. These rules also apply to <code>ErrorFile</code> and <code>CreateNew</code>.</p>
-  <p>Files from another rolling mode are left untouched after settings change. Reserve the whole generated filename family for one logical log: None-mode <code>App</code> and another logger named <code>App_001</code> collide by definition. Use separate directories for overlapping names.</p>
+  <p>Files outside the current naming scheme are left untouched. Reserve the whole generated filename family for one logical log: None-mode <code>App</code> and another logger named <code>App_001</code> collide by definition. <code>App_20261029.log</code> also matches a numeric sequence in None mode. Use separate directories for overlapping names or to preserve all historical files when switching modes.</p>
   <p>Windows path comparison ignores case; other platforms use case-sensitive ordinal comparison. Linux <code>App.log</code>/<code>app.log</code> and <code>Logs</code>/<code>logs</code> stay separate. Per-volume case settings and symbolic-link identity are not detected.</p>
   <h2>Logging Failures and Shutdown</h2>
   <p>This is different from calling <code>logger.Error(ex, message)</code> to record an application exception. A logging failure means SPLog itself cannot write, for example because the disk is full or access is denied.</p>

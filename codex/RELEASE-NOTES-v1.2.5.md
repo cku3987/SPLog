@@ -4,7 +4,7 @@
 
 - Prevent retention from deleting files belonging to similarly named logs, such as AppAudit when cleaning App.
 - Share an exact filename parser between retention and restart sequence discovery for main files and shared error files.
-- Recognize only the configured rolling mode's valid date/hour suffixes and canonical positive sequence numbers (_001 through _999, then _1000 and above). Preserve malformed names, backup files, and different rolling-mode families.
+- Recognize only the configured rolling mode's valid date/hour suffixes and canonical positive sequence numbers (_001 through _999, then _1000 and above). Preserve malformed names, backup files, and files outside the current naming scheme.
 - Always retain the current writer's open file, even when its creation time is older than another candidate.
 - Preserve case-distinct file and directory paths on Linux. Windows case aliases continue to share a writer, including sequence discovery and cleanup.
 - Treat filename characters literally instead of interpolating them into directory search patterns.
@@ -20,7 +20,7 @@
 ## Compatibility and Limits
 
 - No public API or package dependency changes; targets remain net8.0 and netstandard2.0.
-- Retention now leaves files from a different rolling mode untouched after settings change.
+- Retention leaves nonmatching filenames untouched after settings change. Overlapping names remain indistinguishable: for example, App_20261029.log is also a valid numeric sequence in None mode. Use a separate directory to preserve all historical files when changing modes.
 - Reserve each generated filename family for one logical log. For example, None-mode App and a distinct logger named App_001 collide by definition; use separate directories.
 - Path comparison follows platform conventions, not per-volume case settings or symbolic-link identity.
 - The documented unresponsive-sink shutdown limitation is unchanged. This release does not add a shutdown timeout or promise persistence after I/O failure.

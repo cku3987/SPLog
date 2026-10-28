@@ -150,7 +150,7 @@ extension, configured date/hour suffix, and optional positive rolling number
 `App_Backup.log`, or malformed rolling names. The currently open file always
 counts as a retained file and is never selected by that writer's cleanup.
 These rules apply to main and error files, in both `Append` and `CreateNew` modes.
-Files from a different rolling mode are left untouched after a configuration change.
+Files outside the current naming scheme are left untouched after settings change.
 
 Path identity and file matching ignore case on Windows and use ordinal,
 case-sensitive comparisons on other platforms. Linux `App.log` and `app.log`
@@ -161,6 +161,9 @@ Reserve the entire generated filename family for one logical log. For example,
 with rolling mode `None`, a separate logger named `App_001` would collide with
 `App`'s first rolled file. Use separate directories for such names; files with
 exactly the same generated name cannot be attributed to a different logger.
+Likewise, `App_20261029.log` could be a daily file or sequence 20261029 in `None`
+mode. Switching modes cannot distinguish overlapping filenames; use a new directory
+if you need to preserve the previous mode's entire file family.
 
 ## External Configuration
 

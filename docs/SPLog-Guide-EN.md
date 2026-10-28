@@ -131,7 +131,7 @@ using var coreLog = SPLogFactory.CreateFromJsonFile("config/splog.core.json");
 
 Since 1.2.5, retention recognizes only the exact base name, extension, configured date/hour suffix, and optional positive rolling number (`_001`, `_002`, ... `_1000`). `AppAudit.log`, `App_Backup.log`, malformed dates/numbers, and backup files are not part of `App`'s log family. The current writer's open file always occupies a retention slot and is not selected for deletion by that writer. These rules also apply to `ErrorFile` and `CreateNew`.
 
-Files using a different rolling mode are left untouched after configuration changes. Reserve each generated filename family for one logical log: in `None` mode, another logger named `App_001` collides with a rolled file of `App`. Use separate directories for overlapping names.
+Files outside the current naming scheme are left untouched after configuration changes. Reserve each generated filename family for one logical log: in `None` mode, another logger named `App_001` collides with a rolled file of `App`. A date-like name such as `App_20261029.log` also matches a numeric sequence in `None` mode. Use separate directories for overlapping names or when switching modes and preserving all historical files.
 
 Windows path comparison ignores case; other platforms use case-sensitive ordinal comparison. Linux `App.log`/`app.log` and `Logs`/`logs` are separate targets. This does not detect per-volume case settings or resolve symbolic-link aliases.
 
