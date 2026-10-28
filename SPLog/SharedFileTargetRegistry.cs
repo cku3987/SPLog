@@ -6,7 +6,7 @@ namespace SPLog;
 internal static class SharedFileTargetRegistry
 {
     private static readonly object Sync = new();
-    private static readonly Dictionary<string, SharedFileTargetEntry> Entries = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, SharedFileTargetEntry> Entries = new(FilePathResolver.Comparer);
 
     public static SharedFileTargetLease Acquire(SPLogErrorFileOptions options, string loggerName)
     {
@@ -161,6 +161,7 @@ internal sealed class SharedFileTarget : IDisposable
     private readonly string _baseDirectory;
     private readonly string _fileNameWithoutExtension;
     private readonly string _fileExtension;
+    private readonly LogFileSet _files;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private StreamWriter? _writer;
     private FileStream? _stream;
@@ -174,6 +175,7 @@ internal sealed class SharedFileTarget : IDisposable
         _baseDirectory = Path.GetDirectoryName(options.ResolvedBaseFilePath) ?? Directory.GetCurrentDirectory();
         _fileNameWithoutExtension = Path.GetFileNameWithoutExtension(options.ResolvedBaseFilePath);
         _fileExtension = Path.GetExtension(options.ResolvedBaseFilePath);
+        _files = new LogFileSet(_baseDirectory, _fileNameWithoutExtension, _fileExtension, options.FileRollingMode);
     }
 
     public async ValueTask WriteBatchAsync(string[] lines, CancellationToken cancellationToken)
@@ -306,52 +308,9 @@ internal sealed class SharedFileTarget : IDisposable
         return Path.Combine(_baseDirectory, fileName);
     }
 
-    private int DetectLastSequence(string periodKey)
-    {
-        var pattern = _options.FileRollingMode switch
-        {
-            FileRollingMode.Daily => $"{_fileNameWithoutExtension}_{periodKey}*{_fileExtension}",
-            FileRollingMode.Hourly => $"{_fileNameWithoutExtension}_{periodKey}*{_fileExtension}",
-            _ => $"{_fileNameWithoutExtension}*{_fileExtension}"
-        };
-
-        var files = Directory.GetFiles(_baseDirectory, pattern);
-        var maxSequence = -1;
-
-        for (var i = 0; i < files.Length; i++)
-        {
-            var name = Path.GetFileNameWithoutExtension(files[i]);
-            var expectedBaseName = BuildExpectedBaseName(periodKey);
-
-            if (!name.StartsWith(expectedBaseName, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            if (name.Length == expectedBaseName.Length)
-            {
-                maxSequence = Math.Max(maxSequence, 0);
-                continue;
-            }
-
-            if (name.Length <= expectedBaseName.Length + 1 || name[expectedBaseName.Length] != '_')
-            {
-                continue;
-            }
-
-            var suffix = name.Substring(expectedBaseName.Length + 1);
-            if (int.TryParse(suffix, out var parsed))
-            {
-                maxSequence = Math.Max(maxSequence, parsed);
-            }
-        }
-
-        return maxSequence;
-    }
-
     private int GetInitialSequence(string periodKey)
     {
-        var lastSequence = DetectLastSequence(periodKey);
+        var lastSequence = _files.DetectLastSequence(periodKey);
         if (lastSequence < 0)
         {
             return 0;
@@ -362,36 +321,9 @@ internal sealed class SharedFileTarget : IDisposable
             : lastSequence;
     }
 
-    private string BuildExpectedBaseName(string periodKey)
-    {
-        return _options.FileRollingMode switch
-        {
-            FileRollingMode.Daily => $"{_fileNameWithoutExtension}_{periodKey}",
-            FileRollingMode.Hourly => $"{_fileNameWithoutExtension}_{periodKey}",
-            _ => _fileNameWithoutExtension
-        };
-    }
-
     private void CleanupOldFiles()
     {
-        var pattern = $"{_fileNameWithoutExtension}*{_fileExtension}";
-        var files = Directory
-            .GetFiles(_baseDirectory, pattern)
-            .Select(path => new FileInfo(path))
-            .OrderByDescending(info => info.CreationTimeUtc)
-            .ThenByDescending(info => info.Name, StringComparer.Ordinal)
-            .ToArray();
-
-        for (var i = _options.MaxRollingFiles; i < files.Length; i++)
-        {
-            try
-            {
-                files[i].Delete();
-            }
-            catch
-            {
-            }
-        }
+        _files.Cleanup(_options.MaxRollingFiles, BuildFilePath(_currentPeriodKey, _currentSequence));
     }
 
     private DateTime GetNow()

@@ -26,7 +26,10 @@ dotnet run --project SPLog.Tests\SPLog.Tests.csproj -c Release -f net472 --no-bu
 
 Current coverage:
 
-- The same 31 tests run on .NET 8 and the .NET Framework 4.7.2 target (Windows).
+- The same 51 tests run on .NET 8 (Windows/Linux) and the .NET Framework 4.7.2 target (Windows).
+- Retention preserves other filenames across all three rolling modes, both conflict modes, and main/error targets.
+- Case-distinct Linux file and directory paths stay independent; Windows case aliases still share a writer.
+- Restart sequence detection, literal filenames, and retaining an older open file are covered.
 - Sink failure releases blocked producers and rejects later writes.
 - Worker, drain, and multiple sink cleanup failures retain their causes.
 - Composite cleanup releases later shared file leases even if an earlier sink fails.
@@ -62,15 +65,15 @@ Set `SPLogPackageVersion` to verify the actual package instead, without editing 
 ```powershell
 dotnet pack SPLog/SPLog.csproj -c Release --no-build -o artifacts/packages
 $source = Join-Path $PWD 'artifacts/packages'
-dotnet run --project SPLog.Tests -c Release -f net8.0 -p:SPLogPackageVersion=1.2.4 "-p:RestoreAdditionalProjectSources=$source"
-dotnet run --project SPLog.Tests -c Release -f net472 -p:SPLogPackageVersion=1.2.4 "-p:RestoreAdditionalProjectSources=$source"
-dotnet run --project SPLog.Net472.Verify -c Release -p:SPLogPackageVersion=1.2.4 "-p:RestoreAdditionalProjectSources=$source"
+dotnet run --project SPLog.Tests -c Release -f net8.0 -p:SPLogPackageVersion=1.2.5 "-p:RestoreAdditionalProjectSources=$source"
+dotnet run --project SPLog.Tests -c Release -f net472 -p:SPLogPackageVersion=1.2.5 "-p:RestoreAdditionalProjectSources=$source"
+dotnet run --project SPLog.Net472.Verify -c Release -p:SPLogPackageVersion=1.2.5 "-p:RestoreAdditionalProjectSources=$source"
 ```
 
 Use an isolated `RestorePackagesPath` when repacking an unpublished version locally; NuGet caches packages by version. Rebuild normally without these properties afterwards to restore project references.
 
-GitHub `validate.yml` checks source and package builds on Windows for pushes and PRs.
-`publish.yml` is dispatched manually from `main` with an existing version tag. It rejects version mismatches and tags outside main, reruns validation, then publishes the tested package through NuGet Trusted Publishing. No permanent API key is stored.
+GitHub `validate.yml` checks source and package builds on Windows and Linux for pushes and PRs.
+`publish.yml` is dispatched manually from `main` with an existing version tag. It rejects version mismatches and tags outside main, requires Linux source/package tests before the Windows publishing job, reruns validation, then publishes the tested package through NuGet Trusted Publishing. No permanent API key is stored.
 
 One-time setup on NuGet.org: trust owner `cku3987`, repository `SPLog`, workflow filename `publish.yml`, environment `nuget`, and only new versions of package `SPLog`. Set the GitHub repository variable `NUGET_USER` to the owning NuGet profile name (not email). Restrict the GitHub `nuget` environment to `main`.
 

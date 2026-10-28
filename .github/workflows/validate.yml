@@ -10,6 +10,28 @@ permissions:
   contents: read
 
 jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.x
+      - name: Test on a case-sensitive Linux filesystem
+        run: dotnet run --project SPLog.Tests -c Release -f net8.0
+      - name: Build both package targets
+        run: dotnet pack SPLog/SPLog.csproj -c Release -o artifacts/packages
+      - name: Test packaged assemblies on Linux
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content SPLog/SPLog.csproj
+          $version = $project.Project.PropertyGroup.PackageVersion | Where-Object { $_ }
+          $source = Join-Path $PWD 'artifacts/packages'
+          dotnet run --project SPLog.Tests -c Release -f net8.0 -p:SPLogPackageVersion=$version -p:RestoreAdditionalProjectSources=$source
+          exit $LASTEXITCODE
   windows:
     runs-on: windows-2022
     timeout-minutes: 15

@@ -84,6 +84,9 @@ var socketLog = networkLog.CreateCategory("Socket");
 - Relative file paths resolve from `AppContext.BaseDirectory`.
 - If `FilePath` is a folder path such as `logs`, SPLog creates `<Name>.log`.
 - Absolute paths are used as-is.
+- Since 1.2.5, shared path identity is ordinal-ignore-case on Windows and ordinal on other platforms; per-volume case detection and symlink identity are not provided.
+- Retention and restart discovery share an exact filename parser. Only the current rolling mode's valid dates/hours and canonical positive D3 sequence suffixes are owned. Similar prefixes and malformed suffixes are preserved.
+- Cleanup always reserves one slot for its open file. Different logical logs must not overlap generated filename families (for example, None-mode App versus App_001); use separate directories.
 
 ## Logging behavior
 

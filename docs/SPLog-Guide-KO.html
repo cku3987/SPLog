@@ -113,6 +113,10 @@
   <p>외부 설정 파일을 쓰는 권장 방식:</p>
   <pre><code><span class="kw">using</span> <span class="kw">var</span> coreLog = SPLogFactory.CreateFromJsonFile(<span class="str">"config/splog.core.json"</span>);</code></pre>
 
+  <h2>파일 보관과 경로 대소문자</h2>
+  <p>1.2.5부터 기본 파일명·확장자·현재 롤링 모드의 날짜/시간·양수 롤링 번호(<code>_001</code>, <code>_002</code>, ... <code>_1000</code>)가 정확히 맞는 파일만 정리합니다. <code>AppAudit</code>처럼 비슷한 이름, 잘못된 날짜/번호, 백업 파일은 보존합니다. 현재 writer가 쓰는 파일은 생성 시각이 오래돼도 보관 개수에 포함해 유지합니다. <code>ErrorFile</code>과 <code>CreateNew</code>에도 적용됩니다.</p>
+  <p>롤링 모드를 바꾸면 이전 모드 파일은 자동 삭제하지 않습니다. 전체 생성 파일명 범위를 다른 로거와 겹치지 않게 사용하세요. 예를 들어 None 모드의 <code>App</code>과 별도 로거 <code>App_001</code>은 파일명이 겹치므로 서로 다른 폴더를 사용해야 합니다.</p>
+  <p>Windows에서는 경로 대소문자를 무시하고 그 외 플랫폼에서는 구분합니다. Linux의 <code>App.log</code>/<code>app.log</code>, <code>Logs</code>/<code>logs</code>는 서로 다른 대상입니다. 볼륨별 특수 대소문자 설정이나 심볼릭 링크의 동일성까지 판별하지는 않습니다.</p>
   <h2>로그 기록 실패와 종료 처리</h2>
   <p><code>logger.Error(ex, message)</code>로 앱의 예외를 기록하는 것과 다릅니다. 디스크 용량 부족이나 접근 권한 문제 등으로 SPLog 자체가 로그를 쓰지 못하는 상황입니다.</p>
   <ul>

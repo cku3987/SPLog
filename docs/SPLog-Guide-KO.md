@@ -127,6 +127,14 @@ logger.Information($"this should not be written");
 using var coreLog = SPLogFactory.CreateFromJsonFile("config/splog.core.json");
 ```
 
+## 파일 보관과 경로 대소문자
+
+1.2.5부터는 기본 파일명·확장자·현재 롤링 모드의 날짜/시간·양수 롤링 번호(`_001`, `_002`, ... `_1000`) 형식이 정확히 맞는 파일만 정리합니다. `AppAudit.log`, `App_Backup.log`, 잘못된 날짜/번호, 백업 파일은 `App`의 정리 대상이 아닙니다. 현재 writer가 쓰는 파일은 생성 시각이 오래됐어도 보관 개수에 포함해 유지합니다. `ErrorFile`과 `CreateNew`에도 동일하게 적용됩니다.
+
+롤링 모드를 바꾸면 이전 모드의 파일은 자동 삭제하지 않습니다. 한 로거가 생성할 수 있는 전체 파일명 범위는 다른 로거와 겹치지 않아야 합니다. 예를 들어 `None` 모드의 `App`과 별도 로거 `App_001`은 파일명이 겹치므로, 이런 이름은 서로 다른 폴더에 저장하세요.
+
+Windows에서는 경로 대소문자를 무시하고, 그 외 플랫폼에서는 대소문자를 구분합니다. Linux의 `App.log`와 `app.log`, `Logs`와 `logs`는 서로 다른 대상입니다. 볼륨별 특수 대소문자 설정이나 심볼릭 링크의 동일성까지 판별하는 기능은 아닙니다.
+
 ## 로그 기록 실패와 종료 처리
 
 여기서 말하는 실패는 `logger.Error(ex, message)`로 프로그램의 예외를 기록하는 것과 다릅니다.

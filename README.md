@@ -4,7 +4,7 @@ SPLog is a lightweight logging DLL focused on performance, simplicity, and pract
 
 GitHub repository: <https://github.com/cku3987/SPLog>
 
-Current version: `1.2.4` ([NuGet](https://www.nuget.org/packages/SPLog/1.2.4)).
+Current version: `1.2.5` ([NuGet](https://www.nuget.org/packages/SPLog/1.2.5)).
 
 Targets:
 
@@ -141,6 +141,26 @@ socketLog.Error("socket closed");
 This keeps one shared queue and one shared writer, while log lines are identified as `App.Core`, `App.Network`, and `App.Network.Socket`.
 
 Independent loggers using `FileConflictMode.Append` and the same resolved main file path also share one writer within a process. Their file rolling, size, retention, buffer, and UTC settings must match; conflicting settings cause logger creation to fail. `CreateNew` continues to create a separate file for each logger. File writing is not coordinated across separate processes.
+
+## File Retention and Path Identity
+
+Retention and restart sequence detection recognize only the exact base name,
+extension, configured date/hour suffix, and optional positive rolling number
+(`_001`, `_002`, ... `_1000`). For example, `App` does not own `AppAudit.log`,
+`App_Backup.log`, or malformed rolling names. The currently open file always
+counts as a retained file and is never selected by that writer's cleanup.
+These rules apply to main and error files, in both `Append` and `CreateNew` modes.
+Files from a different rolling mode are left untouched after a configuration change.
+
+Path identity and file matching ignore case on Windows and use ordinal,
+case-sensitive comparisons on other platforms. Linux `App.log` and `app.log`
+(or `Logs` and `logs`) no longer share a target. This is a platform convention,
+not per-volume case-sensitivity detection or symbolic-link resolution.
+
+Reserve the entire generated filename family for one logical log. For example,
+with rolling mode `None`, a separate logger named `App_001` would collide with
+`App`'s first rolled file. Use separate directories for such names; files with
+exactly the same generated name cannot be attributed to a different logger.
 
 ## External Configuration
 

@@ -35,7 +35,35 @@ var tests = new (string Name, Func<Task> Execute)[]
     ("CreateNew creates the next suffixed file", CreateNewCreatesSuffixedFileAsync),
     ("CreateNew and size rolling keep sequence numbering", CreateNewAndSizeRollingContinueSequenceAsync),
     ("UpdateFromJsonFile updates an existing options object", UpdateFromJsonFileUpdatesOptionsAsync)
-};
+}.ToList();
+
+foreach (var rolling in new[] { FileRollingMode.None, FileRollingMode.Daily, FileRollingMode.Hourly })
+{
+    foreach (var conflict in new[] { FileConflictMode.Append, FileConflictMode.CreateNew })
+    {
+        foreach (var errorFile in new[] { false, true })
+        {
+            tests.Add(($"Retention preserves unrelated files: {rolling}/{conflict}/error={errorFile}",
+                () => FileTargetRegressionTests.RetentionPreservesUnrelatedFilesAsync(rolling, conflict, errorFile)));
+        }
+    }
+}
+
+foreach (var directoryCase in new[] { false, true })
+{
+    foreach (var errorFile in new[] { false, true })
+    {
+        tests.Add(($"Path casing follows platform rules: directory={directoryCase}/error={errorFile}",
+            () => FileTargetRegressionTests.PathCasingAsync(directoryCase, errorFile)));
+    }
+}
+tests.Add(("Retention treats file name characters literally", FileTargetRegressionTests.LiteralFileNameAsync));
+tests.Add(("Retention keeps an older open file", FileTargetRegressionTests.KeepsCurrentFileAsync));
+foreach (var conflict in new[] { FileConflictMode.Append, FileConflictMode.CreateNew })
+{
+    tests.Add(($"Rolled-file discovery respects case: {conflict}",
+        () => FileTargetRegressionTests.RolledFileCasingAsync(conflict)));
+}
 
 var passed = 0;
 
@@ -55,8 +83,8 @@ foreach (var test in tests)
 }
 
 Console.WriteLine();
-Console.WriteLine($"Completed {tests.Length} tests. Passed: {passed}, Failed: {tests.Length - passed}");
-return passed == tests.Length ? 0 : 1;
+Console.WriteLine($"Completed {tests.Count} tests. Passed: {passed}, Failed: {tests.Count - passed}");
+return passed == tests.Count ? 0 : 1;
 
 static Task DisposeFlushesQueuedMessagesAsync()
 {

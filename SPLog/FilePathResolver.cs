@@ -4,6 +4,13 @@ namespace SPLog;
 
 internal static class FilePathResolver
 {
+    // Windows paths normally ignore case; Unix paths must not collapse distinct names.
+    internal static StringComparer Comparer { get; } = Path.DirectorySeparatorChar == '\\'
+        ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    internal static StringComparison Comparison => Path.DirectorySeparatorChar == '\\'
+        ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
     public static string ResolveLogPath(string filePath, string loggerName)
     {
         var resolvedPath = Path.IsPathRooted(filePath)
