@@ -237,6 +237,15 @@ Important behavior:
 
 ## Logging String Examples
 
+Since 1.2.6, `Log(level, $"...")` also accepts alignment and formatting:
+
+```csharp
+logger.Log(LogLevel.Information, $"id={42,8:D4}; label={"OK",-6}");
+// id=    0042; label=OK (followed by four spaces)
+```
+
+The width after the comma is a minimum width: positive means right-aligned, negative means left-aligned, and longer values are not truncated. `D4` formats the number with at least four digits. Null values become empty padded fields. Numeric formatting follows the current culture. On .NET 8, the handler avoids evaluating interpolation expressions when the level is disabled. `Information($"...")` and the .NET Framework string overload format the string before the logging call.
+
 Basic string:
 
 ```csharp
@@ -343,6 +352,12 @@ Examples:
 - `FilePath = @"D:\Logs\custom.log"` -> `D:\Logs\custom_20260313.log`
 
 ## Rolling Behavior
+
+Since 1.2.6, `CreateNew` atomically claims each filename, both on first write and during size/date/hour rolling. If another writer has taken that number, SPLog tries the next one rather than appending to it. Numbers can therefore skip. Other I/O failures are reported, not retried as collisions. Files are still created lazily on the first matching entry, not during `Create()`.
+
+Retention protects files currently open by SPLog within the same process. `MaxRollingFiles` may temporarily be exceeded; closed files become eligible during a later startup or roll. Atomic filename claiming also works across processes, but cross-process retention and `Append` are not coordinated. Use separate folders for independently managed processes. Multiple matching `ErrorFile` configurations within one process intentionally share one writer, even with `CreateNew`.
+
+The main log and `ErrorFile` independently use their own `UseUtcTimestamp` values for output and rolling periods. For example, a UTC main log can also write the same error in local time to an error file configured with `UseUtcTimestamp = false`.
 
 - `Daily`: `Core_20260313.log`
 - `Hourly`: `Core_20260313_14.log`

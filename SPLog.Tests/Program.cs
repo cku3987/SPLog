@@ -2,6 +2,12 @@ using System.Text;
 using SPLog;
 using SPLog.Tests;
 
+if (args.Length == 3 && args[0] == "--create-new-child")
+{
+    Release126RegressionTests.RunCreateNewChild(args[1], int.Parse(args[2]));
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Execute)[]
 {
     ("Dispose flushes queued messages", DisposeFlushesQueuedMessagesAsync),
@@ -64,6 +70,25 @@ foreach (var conflict in new[] { FileConflictMode.Append, FileConflictMode.Creat
     tests.Add(($"Rolled-file discovery respects case: {conflict}",
         () => FileTargetRegressionTests.RolledFileCasingAsync(conflict)));
 }
+
+foreach (var rolling in new[] { FileRollingMode.None, FileRollingMode.Daily, FileRollingMode.Hourly })
+    tests.Add(($"Concurrent CreateNew isolates files: {rolling}", () => Release126RegressionTests.ConcurrentCreateNewAsync(rolling)));
+foreach (var error in new[] { false, true })
+    foreach (var period in new[] { false, true })
+        tests.Add(($"CreateNew rolling skips occupied files: error={error}/period={period}",
+            () => Release126RegressionTests.RollingSkipsExistingAsync(error, period)));
+tests.Add(("Retention preserves other active writers", Release126RegressionTests.RetentionPreservesActiveWritersAsync));
+tests.Add(("CreateNew isolates separate processes", Release126RegressionTests.CrossProcessCreateNewAsync));
+tests.Add(("Atomic creation skips collisions and preserves failures", Release126RegressionTests.AtomicCreationAsync));
+tests.Add(("CreateNew error file retains intentional in-process sharing", Release126RegressionTests.SharedCreateNewErrorAsync));
+tests.Add(("Interpolation supports alignment and format", Release126RegressionTests.AlignedInterpolationAsync));
+#if NET8_0_OR_GREATER
+tests.Add(("Disabled interpolation skips aligned expressions", Release126RegressionTests.DisabledAlignmentAsync));
+#endif
+foreach (var mainUtc in new[] { false, true })
+    foreach (var errorUtc in new[] { false, true })
+        tests.Add(($"Error file time zone: mainUtc={mainUtc}/errorUtc={errorUtc}",
+            () => Release126RegressionTests.ErrorTimeZoneAsync(mainUtc, errorUtc)));
 
 var passed = 0;
 

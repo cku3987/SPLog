@@ -58,6 +58,43 @@ public ref struct SPLogInterpolatedStringHandler
         _builder?.Append(value);
     }
 
+    public void AppendFormatted<T>(T value, int alignment)
+    {
+        AppendFormatted(value, alignment, null);
+    }
+
+    public void AppendFormatted<T>(T value, int alignment, string? format)
+    {
+        if (_builder is null) return;
+        var start = _builder.Length;
+        AppendFormatted(value, format);
+        Align(start, alignment);
+    }
+
+    public void AppendFormatted(string? value, int alignment = 0, string? format = null)
+    {
+        if (_builder is null) return;
+        var start = _builder.Length;
+        _builder.Append(value);
+        Align(start, alignment);
+    }
+
+    public void AppendFormatted(ReadOnlySpan<char> value, int alignment = 0, string? format = null)
+    {
+        if (_builder is null) return;
+        var start = _builder.Length;
+        _builder.Append(value);
+        Align(start, alignment);
+    }
+
+    private void Align(int start, int alignment)
+    {
+        var padding = Math.Abs(alignment) - (_builder!.Length - start);
+        if (padding <= 0) return;
+        if (alignment < 0) _builder.Append(' ', padding);
+        else _builder.Insert(start, new string(' ', padding));
+    }
+
     internal string GetFormattedText()
     {
         if (!_enabled || _builder is null)

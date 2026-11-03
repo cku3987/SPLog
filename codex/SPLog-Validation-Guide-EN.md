@@ -26,7 +26,9 @@ dotnet run --project SPLog.Tests\SPLog.Tests.csproj -c Release -f net472 --no-bu
 
 Current coverage:
 
-- The same 51 tests run on .NET 8 (Windows/Linux) and the .NET Framework 4.7.2 target (Windows).
+- 68 tests run on .NET 8 (Windows/Linux), and 67 on the .NET Framework 4.7.2 target (Windows). The extra modern-runtime test verifies skipped interpolation evaluation.
+- Concurrent CreateNew writers, separate child processes, occupied rollover targets, active-file retention, collision retries, and failure/overflow propagation are covered.
+- Alignment/format output is checked in en-US/fr-FR, including nulls and spans on .NET 8. All four main/error UTC combinations are checked; CI uses a non-UTC local zone.
 - Retention preserves other filenames across all three rolling modes, both conflict modes, and main/error targets.
 - Case-distinct Linux file and directory paths stay independent; Windows case aliases still share a writer.
 - Restart sequence detection, literal filenames, and retaining an older open file are covered.
@@ -65,9 +67,9 @@ Set `SPLogPackageVersion` to verify the actual package instead, without editing 
 ```powershell
 dotnet pack SPLog/SPLog.csproj -c Release --no-build -o artifacts/packages
 $source = Join-Path $PWD 'artifacts/packages'
-dotnet run --project SPLog.Tests -c Release -f net8.0 -p:SPLogPackageVersion=1.2.5 "-p:RestoreAdditionalProjectSources=$source"
-dotnet run --project SPLog.Tests -c Release -f net472 -p:SPLogPackageVersion=1.2.5 "-p:RestoreAdditionalProjectSources=$source"
-dotnet run --project SPLog.Net472.Verify -c Release -p:SPLogPackageVersion=1.2.5 "-p:RestoreAdditionalProjectSources=$source"
+dotnet run --project SPLog.Tests -c Release -f net8.0 -p:SPLogPackageVersion=1.2.6 "-p:RestoreAdditionalProjectSources=$source"
+dotnet run --project SPLog.Tests -c Release -f net472 -p:SPLogPackageVersion=1.2.6 "-p:RestoreAdditionalProjectSources=$source"
+dotnet run --project SPLog.Net472.Verify -c Release -p:SPLogPackageVersion=1.2.6 "-p:RestoreAdditionalProjectSources=$source"
 ```
 
 Use an isolated `RestorePackagesPath` when repacking an unpublished version locally; NuGet caches packages by version. Rebuild normally without these properties afterwards to restore project references.

@@ -95,6 +95,11 @@ var socketLog = networkLog.CreateCategory("Socket");
 - Supported file conflict modes: `Append`, `CreateNew`.
 - `CreateNew` starts numbering only when a file for the same period already exists.
 - Size rolling and `CreateNew` share the same numeric sequence.
+- Since 1.2.6, CreateNew atomically claims filenames on startup and every roll, retrying only OS file-exists errors. Sequence overflow and unrelated I/O errors fail explicitly.
+- Retention never deletes a file registered as open by SPLog in the same process. The retention cap can temporarily be exceeded. Cross-process retention and Append remain uncoordinated; use separate directories.
+- Shared ErrorFile leases remain one logical target even in CreateNew mode.
+- ErrorFile timestamp conversion is independent of the main logger's UTC setting, in both directions.
+- The .NET 8 handler supports positive/negative alignment with optional formats, nulls, strings, and spans; disabled levels still skip expression evaluation.
 
 ## Current defaults
 

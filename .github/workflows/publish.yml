@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing release tag, for example v1.2.5'
+        description: 'Existing release tag, for example v1.2.6'
         required: true
         type: string
 
@@ -19,6 +19,8 @@ jobs:
   linux:
     if: github.repository == 'cku3987/SPLog' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    env:
+      TZ: Asia/Seoul
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,7 +58,7 @@ jobs:
       - name: Validate release input
         shell: pwsh
         run: |
-          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Expected a stable version tag such as v1.2.5.' }
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Expected a stable version tag such as v1.2.6.' }
           if ([string]::IsNullOrWhiteSpace($env:NUGET_USER)) { throw 'Set the NUGET_USER repository variable to your NuGet profile name.' }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,6 +85,8 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 8.0.x
+      - name: Exercise non-UTC local timestamps
+        run: tzutil /s "Korea Standard Time"
       - name: Build release
         run: dotnet build SPLog.sln -c Release -m:1
       - name: Test .NET 8

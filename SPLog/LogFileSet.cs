@@ -45,7 +45,7 @@ internal sealed class LogFileSet
         {
             try
             {
-                oldFiles[i].Delete();
+                LogFileWriter.DeleteIfInactive(oldFiles[i]);
             }
             catch
             {

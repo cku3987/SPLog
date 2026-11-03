@@ -203,6 +203,9 @@ moduleBLog.Error(<span class="str">"module B failed"</span>);</code></pre>
   </ul>
 
   <h2>로깅 문자열 사용 예시</h2>
+  <p>1.2.6부터 <code>Log(level, $"...")</code>에서도 정렬 폭과 출력 형식을 함께 지정할 수 있습니다.</p>
+  <pre><code>logger.Log(<span class="type">LogLevel</span>.Information, <span class="str">$"id={42,8:D4}; label={"OK",-6}"</span>);</code></pre>
+  <p>쉼표 뒤 숫자는 최소 칸 수입니다. 양수면 오른쪽 정렬, 음수면 왼쪽 정렬이며 긴 값을 잘라내지 않습니다. <code>D4</code>는 42를 0042로 표시하므로 id는 공백 네 칸 뒤에 0042, label은 OK 뒤에 공백 네 칸이 됩니다. null은 공백으로 채워지고 숫자 형식은 현재 문화권을 따릅니다. .NET 8의 전용 핸들러는 비활성 레벨이면 보간식 자체를 평가하지 않습니다. <code>Information($"...")</code>과 .NET Framework 문자열 오버로드는 호출 전에 문자열을 만듭니다.</p>
   <p>기본 문자열:</p>
   <pre><code>logger.Information(<span class="str">"application started"</span>);</code></pre>
   <p>문자열 변수:</p>
@@ -287,6 +290,9 @@ SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.c
     <tr><td><code>FileBufferSize</code></td><td><code>65536</code></td><td><code>1024</code> 이상 정수</td><td>공용 에러 파일 writer의 버퍼 크기입니다.</td></tr>
   </table>
   <h2>FileConflictMode</h2>
+  <p>1.2.6부터 <code>CreateNew</code>는 첫 기록과 용량·날짜·시간 롤링 모두 OS의 원자적 새 파일 생성으로 이름을 확보합니다. 이미 차지한 이름이면 다음 번호를 시도하므로 번호가 건너뛰어질 수 있습니다. 이름 충돌 이외의 I/O 오류는 그대로 보고합니다. 파일은 <code>Create()</code> 시점이 아니라 첫 해당 로그를 기록할 때 생성됩니다.</p>
+  <p>보관 정리는 같은 프로세스에서 SPLog가 사용 중인 파일을 삭제하지 않습니다. <code>MaxRollingFiles</code>를 일시적으로 초과할 수 있고, 닫힌 파일은 이후 생성·롤링 시 정리됩니다. 별도 프로세스 간에도 이름 확보는 원자적이지만 보관 정리와 <code>Append</code>까지 조율하지는 않으므로 독립 운영 프로세스는 폴더를 분리하세요. 같은 프로세스의 동일한 <code>ErrorFile</code> 설정은 <code>CreateNew</code>여도 하나의 writer를 공유합니다.</p>
+  <p>메인과 에러 로그는 각자의 <code>UseUtcTimestamp</code>로 출력 시간과 롤링 기간을 결정합니다. 메인이 UTC여도 <code>ErrorFile.UseUtcTimestamp = false</code>이면 에러 파일에는 같은 사건이 로컬 시간으로 기록됩니다.</p>
   <p>큐가 가득 차면 SPLog는 새 로그를 버리지 않고 자리가 날 때까지 기다립니다.</p>
   <ul>
     <li><code>FileConflictMode</code> 옵션은 같은 이름의 현재 대상 로그 파일이 이미 있을 때 어떻게 처리할지 정합니다.</li>

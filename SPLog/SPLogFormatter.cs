@@ -7,7 +7,7 @@ internal static class SPLogFormatter
     public static string Format(LogEntry entry, SPLogOptions options)
     {
         var builder = new StringBuilder(128 + entry.Message.Length);
-        var timestamp = options.UseUtcTimestamp ? entry.Timestamp.ToUniversalTime() : entry.Timestamp;
+        var timestamp = options.UseUtcTimestamp ? entry.Timestamp.ToUniversalTime() : entry.Timestamp.ToLocalTime();
         builder.Append('[');
         builder.Append(timestamp.ToString(options.TimestampFormat));
         builder.Append("] [");

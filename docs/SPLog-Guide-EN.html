@@ -203,6 +203,9 @@ moduleBLog.Error(<span class="str">"module B failed"</span>);</code></pre>
   </ul>
 
   <h2>Logging String Examples</h2>
+  <p>Since 1.2.6, <code>Log(level, $"...")</code> accepts alignment and formatting:</p>
+  <pre><code>logger.Log(<span class="type">LogLevel</span>.Information, <span class="str">$"id={42,8:D4}; label={"OK",-6}"</span>);</code></pre>
+  <p>The width after the comma is a minimum width. Positive means right-aligned, negative means left-aligned, and longer values are not truncated. <code>D4</code> changes 42 to 0042, so the id field is four spaces followed by 0042; the label is OK followed by four spaces. Nulls become empty padded fields. Number formatting follows the current culture. On .NET 8, the handler skips interpolation expressions for disabled levels. <code>Information($"...")</code> and .NET Framework string overloads format before the call.</p>
   <p>Basic string:</p>
   <pre><code>logger.Information(<span class="str">"application started"</span>);</code></pre>
   <p>String variable:</p>
@@ -290,6 +293,9 @@ SPLogConfiguration.UpdateFromJsonFile(options, <span class="str">"config/splog.c
   </table>
 
   <h2>Rolling Behavior</h2>
+  <p>Since 1.2.6, <code>CreateNew</code> atomically claims filenames on first write and every size/date/hour roll. Occupied names cause a retry at the next number; other I/O failures are reported. Numbers can skip. Files remain lazily created on the first matching entry, not during <code>Create()</code>.</p>
+  <p>Retention protects files open by SPLog in the same process. <code>MaxRollingFiles</code> can temporarily be exceeded; closed files become eligible at the next startup or roll. Atomic naming works across processes, but cross-process retention and <code>Append</code> are not coordinated: use separate folders for independently managed processes. Matching in-process <code>ErrorFile</code> leases intentionally share a writer even with <code>CreateNew</code>.</p>
+  <p>Main and error timestamps and rolling periods independently follow their own <code>UseUtcTimestamp</code> setting. A UTC main logger can also write local-time errors when <code>ErrorFile.UseUtcTimestamp = false</code>.</p>
   <ul>
     <li><code>Daily</code>: <code>Core_20260313.log</code></li>
     <li><code>Hourly</code>: <code>Core_20260313_14.log</code></li>

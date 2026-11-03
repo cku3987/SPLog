@@ -4,7 +4,7 @@ SPLog is a lightweight logging DLL focused on performance, simplicity, and pract
 
 GitHub repository: <https://github.com/cku3987/SPLog>
 
-Current version: `1.2.5` ([NuGet](https://www.nuget.org/packages/SPLog/1.2.5)).
+Current version: `1.2.6` ([NuGet](https://www.nuget.org/packages/SPLog/1.2.6)).
 
 Targets:
 
@@ -140,7 +140,9 @@ socketLog.Error("socket closed");
 
 This keeps one shared queue and one shared writer, while log lines are identified as `App.Core`, `App.Network`, and `App.Network.Socket`.
 
-Independent loggers using `FileConflictMode.Append` and the same resolved main file path also share one writer within a process. Their file rolling, size, retention, buffer, and UTC settings must match; conflicting settings cause logger creation to fail. `CreateNew` continues to create a separate file for each logger. File writing is not coordinated across separate processes.
+Independent loggers using `FileConflictMode.Append` and the same resolved main file path also share one writer within a process. Their file rolling, size, retention, buffer, and UTC settings must match; conflicting settings cause logger creation to fail. `CreateNew` creates a separate file for each independent main logger. Since 1.2.6, startup and rolling atomically claim a new filename and retry occupied numbers, including when separate processes compete. This does not coordinate cross-process `Append` or retention; use separate directories for independently managed processes. Shared `ErrorFile` leases within one process intentionally continue using one writer, including in `CreateNew` mode.
+
+Since 1.2.6, retention skips every file held open by SPLog in the same process. The file count can temporarily exceed `MaxRollingFiles`; closed files become eligible at the next normal cleanup. Main and error timestamps independently follow their own `UseUtcTimestamp` settings. The .NET 8 interpolation handler also supports alignment and format combinations, for example `logger.Log(LogLevel.Information, $"value={42,8:D4}")`. Positive widths right-align, negative widths left-align, and values are never truncated to fit.
 
 ## File Retention and Path Identity
 

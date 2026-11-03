@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace SPLog;
 
 internal sealed class FileLogSink : ILogSink
@@ -10,8 +8,7 @@ internal sealed class FileLogSink : ILogSink
     private readonly string _fileExtension;
     private readonly LogFileSet _files;
     private readonly SharedFileTargetLease? _sharedLease;
-    private StreamWriter? _writer;
-    private FileStream? _stream;
+    private LogFileWriter? _file;
     private string _currentPeriodKey = string.Empty;
     private int _currentSequence;
 
@@ -50,13 +47,13 @@ internal sealed class FileLogSink : ILogSink
             EnsureWriter();
             RotateIfNeeded();
             cancellationToken.ThrowIfCancellationRequested();
-            await _writer!.WriteLineAsync(line).ConfigureAwait(false);
+            await _file!.Writer.WriteLineAsync(line).ConfigureAwait(false);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        if (_writer is not null)
+        if (_file is not null)
         {
-            await _writer.FlushAsync().ConfigureAwait(false);
+            await _file.Writer.FlushAsync().ConfigureAwait(false);
         }
     }
 
@@ -68,13 +65,12 @@ internal sealed class FileLogSink : ILogSink
             return;
         }
 
-        _writer?.Dispose();
-        _stream?.Dispose();
+        _file?.Dispose();
     }
 
     private void RotateIfNeeded()
     {
-        if (_stream is null)
+        if (_file is null)
         {
             return;
         }
@@ -89,27 +85,27 @@ internal sealed class FileLogSink : ILogSink
             return;
         }
 
-        if (_stream.Length < _options.MaxFileSizeBytes)
+        if (_file.Stream.Length < _options.MaxFileSizeBytes)
         {
             return;
         }
 
-        SwitchWriter(_currentPeriodKey, _currentSequence + 1);
+        SwitchWriter(_currentPeriodKey, checked(_currentSequence + 1));
         CleanupOldFiles();
     }
 
     private void SwitchWriter(string periodKey, int sequence)
     {
-        _writer?.Dispose();
-        _stream?.Dispose();
+        _file?.Dispose();
+        _file = null;
         _currentPeriodKey = periodKey;
         _currentSequence = sequence;
-        (_stream, _writer) = OpenWriter(periodKey, sequence);
+        _file = OpenWriter(periodKey);
     }
 
     private void EnsureWriter()
     {
-        if (_writer is not null)
+        if (_file is not null)
         {
             return;
         }
@@ -117,27 +113,14 @@ internal sealed class FileLogSink : ILogSink
         Directory.CreateDirectory(_baseDirectory);
         _currentPeriodKey = GetPeriodKey(GetNow());
         _currentSequence = GetInitialSequence(_currentPeriodKey);
-        (_stream, _writer) = OpenWriter(_currentPeriodKey, _currentSequence);
+        _file = OpenWriter(_currentPeriodKey);
         CleanupOldFiles();
     }
 
-    private (FileStream Stream, StreamWriter Writer) OpenWriter(string periodKey, int sequence)
+    private LogFileWriter OpenWriter(string periodKey)
     {
-        var path = BuildFilePath(periodKey, sequence);
-        var stream = new FileStream(
-            path,
-            FileMode.Append,
-            FileAccess.Write,
-            FileShare.ReadWrite,
-            _options.FileBufferSize,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-        var writer = new StreamWriter(stream, Encoding.UTF8, _options.FileBufferSize)
-        {
-            AutoFlush = false
-        };
-
-        return (stream, writer);
+        return LogFileWriter.Open(sequence => BuildFilePath(periodKey, sequence),
+            ref _currentSequence, _options.FileConflictMode, _options.FileBufferSize);
     }
 
     private string BuildFilePath(string periodKey, int sequence)
@@ -163,7 +146,7 @@ internal sealed class FileLogSink : ILogSink
         }
 
         return _options.FileConflictMode == FileConflictMode.CreateNew
-            ? lastSequence + 1
+            ? checked(lastSequence + 1)
             : lastSequence;
     }
 

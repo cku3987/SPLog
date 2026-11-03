@@ -252,6 +252,15 @@ logger.Information(message);
 
 보간 문자열:
 
+1.2.6부터 `Log(level, $"...")`에서도 정렬 폭과 출력 형식을 함께 지정할 수 있습니다.
+
+```csharp
+logger.Log(LogLevel.Information, $"id={42,8:D4}; label={"OK",-6}");
+// id=    0042; label=OK (OK 뒤에 공백 네 칸)
+```
+
+쉼표 뒤의 숫자는 최소 칸 수입니다. 양수면 오른쪽 정렬, 음수면 왼쪽 정렬이며 값이 길어도 잘라내지 않습니다. `D4`는 정수를 최소 네 자리로 표시하므로 `42`가 `0042`가 됩니다. null은 공백으로 채워지고 숫자 형식은 현재 문화권 설정을 따릅니다. .NET 8의 `Log` 전용 핸들러는 비활성 로그 레벨이면 보간식 자체를 평가하지 않습니다. `Information($"...")`과 .NET Framework의 문자열 오버로드는 호출 전에 문자열을 만듭니다.
+
 ```csharp
 var userId = 1201;
 logger.Information($"user connected: {userId}");
@@ -396,6 +405,12 @@ using var logger = SPLogFactory.Create(options);
 - `FileConflictMode` 옵션은 "같은 이름의 현재 대상 로그 파일이 이미 있을 때" 어떻게 처리할지 정합니다.
 - `Append`: 기존 파일에 그대로 이어서 기록합니다.
 - `CreateNew`: 새 파일을 구분되게 만듭니다.
+
+1.2.6부터는 첫 기록뿐 아니라 용량·날짜·시간 롤링 때도 OS의 원자적 새 파일 생성으로 이름을 확보합니다. 다른 writer가 이미 차지한 이름이면 기존 파일에 덧붙이지 않고 다음 번호를 시도하므로 번호가 건너뛰어질 수 있습니다. 이름 충돌이 아닌 I/O 오류는 그대로 보고합니다. `Create()` 시점이 아니라 첫 해당 로그를 기록할 때 파일을 생성하는 동작은 유지됩니다.
+
+보관 정리는 같은 프로세스 안에서 SPLog가 사용 중인 파일을 삭제하지 않습니다. 따라서 `MaxRollingFiles`를 일시적으로 초과할 수 있으며, 닫힌 파일은 이후 생성·롤링 시 정리 대상이 됩니다. 별도 프로세스 간에도 새 파일 이름 확보는 원자적이지만, 보관 정리와 `Append` 쓰기까지 조율하지는 않습니다. 독립적으로 운영하는 프로세스는 폴더를 분리하세요. 같은 프로세스의 동일한 `ErrorFile` 설정은 `CreateNew`여도 의도적으로 하나의 writer를 공유합니다.
+
+메인 로그와 에러 로그는 각각의 `UseUtcTimestamp` 값으로 출력 시간과 롤링 기간을 결정합니다. 메인을 UTC로 설정해도 `ErrorFile.UseUtcTimestamp = false`이면 에러 파일에는 같은 사건이 로컬 시간으로 기록됩니다.
 
 예시:
 
