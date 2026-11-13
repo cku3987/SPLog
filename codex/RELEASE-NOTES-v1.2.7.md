@@ -2,9 +2,9 @@
 
 ## License and Package Metadata
 
-- Adopt the MIT License with copyright holder cku3987.
+- Adopt the MIT License with copyright holder Codingyong.
 - Add the full LICENSE text to the repository and the NuGet package root.
-- Declare PackageLicenseExpression=MIT and Copyright (c) 2026 cku3987 in package metadata.
+- Declare PackageLicenseExpression=MIT and Copyright (c) 2026 Codingyong in package metadata.
 - Add CI checks that reject packages with missing/incorrect license metadata or missing/changed embedded license text.
 - Update README licensing information and package validation examples.
 

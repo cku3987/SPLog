@@ -10,7 +10,7 @@
     <AssemblyVersion>1.2.7.0</AssemblyVersion>
     <FileVersion>1.2.7.0</FileVersion>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Copyright>Copyright (c) 2026 cku3987</Copyright>
+    <Copyright>Copyright (c) 2026 Codingyong</Copyright>
     <InformationalVersion>1.2.7</InformationalVersion>
     <Description>Lightweight logging DLL focused on performance, simplicity, and practical file logging for .NET applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

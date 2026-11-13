@@ -253,7 +253,7 @@ The default stress sample includes:
 
 ## License
 
-SPLog is licensed under the [MIT License](https://github.com/cku3987/SPLog/blob/main/LICENSE). Copyright (c) 2026 cku3987.
+SPLog is licensed under the [MIT License](https://github.com/cku3987/SPLog/blob/main/LICENSE). Copyright (c) 2026 Codingyong.
 Starting with 1.2.7, NuGet packages declare the SPDX license expression `MIT` and include the full `LICENSE` text.
 
 ## Project Link

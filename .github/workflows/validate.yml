@@ -74,7 +74,7 @@ jobs:
             [xml]$spec = Read-Entry 'SPLog.nuspec'
             $metadata = $spec.package.metadata
             if ($metadata.license.type -ne 'expression' -or $metadata.license.InnerText -ne 'MIT') { throw 'Expected MIT license expression.' }
-            if ($metadata.copyright -ne 'Copyright (c) 2026 cku3987') { throw 'Unexpected copyright notice.' }
+            if ($metadata.copyright -ne 'Copyright (c) 2026 Codingyong') { throw 'Unexpected copyright notice.' }
             $expected = (Get-Content LICENSE -Raw).Replace("`r`n", "`n")
             if ((Read-Entry 'LICENSE').Replace("`r`n", "`n") -cne $expected) { throw 'Embedded LICENSE differs from repository text.' }
             Write-Output 'MIT metadata, copyright, and embedded LICENSE verified.'
