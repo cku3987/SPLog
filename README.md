@@ -4,7 +4,7 @@ SPLog is a lightweight logging DLL focused on performance, simplicity, and pract
 
 GitHub repository: <https://github.com/cku3987/SPLog>
 
-Current version: `1.2.6` ([NuGet](https://www.nuget.org/packages/SPLog/1.2.6)).
+Current version: `1.2.7` ([NuGet](https://www.nuget.org/packages/SPLog/1.2.7)).
 
 Targets:
 
@@ -250,6 +250,11 @@ The default stress sample includes:
 - English guide: `docs/SPLog-Guide-EN.html`
 - Korean guide: `docs/SPLog-Guide-KO.html`
 - Validation guide: `codex/SPLog-Validation-Guide-EN.md`
+
+## License
+
+SPLog is licensed under the [MIT License](https://github.com/cku3987/SPLog/blob/main/LICENSE). Copyright (c) 2026 cku3987.
+Starting with 1.2.7, NuGet packages declare the SPDX license expression `MIT` and include the full `LICENSE` text.
 
 ## Project Link
 

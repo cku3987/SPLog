@@ -7,6 +7,8 @@ This file keeps the main project decisions so future sessions can resume quickly
 - Prioritize performance and simplicity over framework-style extensibility.
 - Keep the API easy to use for application-level logging.
 - Prefer a small surface area with practical defaults.
+- Keep the implementation in C# for .NET consumers; no Rust rewrite is planned.
+- The owner approved the MIT License with copyright holder cku3987. Version 1.2.7 declares MIT in NuGet metadata and includes the repository LICENSE text in the package.
 
 ## Recommended usage patterns
 

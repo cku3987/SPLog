@@ -67,14 +67,15 @@ Set `SPLogPackageVersion` to verify the actual package instead, without editing 
 ```powershell
 dotnet pack SPLog/SPLog.csproj -c Release --no-build -o artifacts/packages
 $source = Join-Path $PWD 'artifacts/packages'
-dotnet run --project SPLog.Tests -c Release -f net8.0 -p:SPLogPackageVersion=1.2.6 "-p:RestoreAdditionalProjectSources=$source"
-dotnet run --project SPLog.Tests -c Release -f net472 -p:SPLogPackageVersion=1.2.6 "-p:RestoreAdditionalProjectSources=$source"
-dotnet run --project SPLog.Net472.Verify -c Release -p:SPLogPackageVersion=1.2.6 "-p:RestoreAdditionalProjectSources=$source"
+dotnet run --project SPLog.Tests -c Release -f net8.0 -p:SPLogPackageVersion=1.2.7 "-p:RestoreAdditionalProjectSources=$source"
+dotnet run --project SPLog.Tests -c Release -f net472 -p:SPLogPackageVersion=1.2.7 "-p:RestoreAdditionalProjectSources=$source"
+dotnet run --project SPLog.Net472.Verify -c Release -p:SPLogPackageVersion=1.2.7 "-p:RestoreAdditionalProjectSources=$source"
 ```
 
 Use an isolated `RestorePackagesPath` when repacking an unpublished version locally; NuGet caches packages by version. Rebuild normally without these properties afterwards to restore project references.
 
 GitHub `validate.yml` checks source and package builds on Windows and Linux for pushes and PRs.
+The Windows validation and publishing jobs also inspect the packed nuspec for the MIT expression and copyright notice, and require the embedded LICENSE to match the repository text (ignoring newline differences).
 `publish.yml` is dispatched manually from `main` with an existing version tag. It rejects version mismatches and tags outside main, requires Linux source/package tests before the Windows publishing job, reruns validation, then publishes the tested package through NuGet Trusted Publishing. No permanent API key is stored.
 
 One-time setup on NuGet.org: trust owner `cku3987`, repository `SPLog`, workflow filename `publish.yml`, environment `nuget`, and only new versions of package `SPLog`. Set the GitHub repository variable `NUGET_USER` to the owning NuGet profile name (not email). Restrict the GitHub `nuget` environment to `main`.

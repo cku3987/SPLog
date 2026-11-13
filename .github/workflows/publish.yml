@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing release tag, for example v1.2.6'
+        description: 'Existing release tag, for example v1.2.7'
         required: true
         type: string
 
@@ -58,7 +58,7 @@ jobs:
       - name: Validate release input
         shell: pwsh
         run: |
-          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Expected a stable version tag such as v1.2.6.' }
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Expected a stable version tag such as v1.2.7.' }
           if ([string]::IsNullOrWhiteSpace($env:NUGET_USER)) { throw 'Set the NUGET_USER repository variable to your NuGet profile name.' }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -99,6 +99,27 @@ jobs:
         run: dotnet run --project SPLog.StressRunner -c Release --no-build -- --duration 00:00:05 --status 00:00:02 --producers 2 --payload 32 --burst 20
       - name: Pack
         run: dotnet pack SPLog/SPLog.csproj -c Release --no-build -o artifacts/packages
+      - name: Verify package license metadata and text
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content SPLog/SPLog.csproj
+          $version = $project.Project.PropertyGroup.PackageVersion | Where-Object { $_ }
+          $package = [IO.Compression.ZipFile]::OpenRead((Join-Path $PWD "artifacts/packages/SPLog.$version.nupkg"))
+          function Read-Entry($name) {
+            $entry = $package.GetEntry($name)
+            if ($null -eq $entry) { throw "Missing package entry: $name" }
+            $reader = [IO.StreamReader]::new($entry.Open())
+            try { $reader.ReadToEnd() } finally { $reader.Dispose() }
+          }
+          try {
+            [xml]$spec = Read-Entry 'SPLog.nuspec'
+            $metadata = $spec.package.metadata
+            if ($metadata.license.type -ne 'expression' -or $metadata.license.InnerText -ne 'MIT') { throw 'Expected MIT license expression.' }
+            if ($metadata.copyright -ne 'Copyright (c) 2026 cku3987') { throw 'Unexpected copyright notice.' }
+            $expected = (Get-Content LICENSE -Raw).Replace("`r`n", "`n")
+            if ((Read-Entry 'LICENSE').Replace("`r`n", "`n") -cne $expected) { throw 'Embedded LICENSE differs from repository text.' }
+            Write-Output 'MIT metadata, copyright, and embedded LICENSE verified.'
+          } finally { $package.Dispose() }
       - name: Test the exact package to be published
         shell: pwsh
         env:

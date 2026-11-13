@@ -5,11 +5,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <Version>1.2.6</Version>
-    <PackageVersion>1.2.6</PackageVersion>
-    <AssemblyVersion>1.2.6.0</AssemblyVersion>
-    <FileVersion>1.2.6.0</FileVersion>
-    <InformationalVersion>1.2.6</InformationalVersion>
+    <Version>1.2.7</Version>
+    <PackageVersion>1.2.7</PackageVersion>
+    <AssemblyVersion>1.2.7.0</AssemblyVersion>
+    <FileVersion>1.2.7.0</FileVersion>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Copyright>Copyright (c) 2026 cku3987</Copyright>
+    <InformationalVersion>1.2.7</InformationalVersion>
     <Description>Lightweight logging DLL focused on performance, simplicity, and practical file logging for .NET applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/cku3987/SPLog</RepositoryUrl>
@@ -26,6 +28,7 @@
 
   <ItemGroup>
     <None Include="..\README.md" Pack="true" PackagePath="\" Link="README.md" />
+    <None Include="..\LICENSE" Pack="true" PackagePath="\" Link="LICENSE" />
   </ItemGroup>
 
 </Project>
